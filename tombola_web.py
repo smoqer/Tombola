@@ -13,10 +13,15 @@ st.set_page_config(page_title="TombolaRock", layout="wide", page_icon="🤘")
 # ==========================================
 # ⚙️ IMPOSTAZIONI ECONOMICHE
 # ==========================================
-COSTO_CARTELLA = 5 
+COSTO_CARTELLA = 5  # Costo in gettoni
 
+# Percentuali Montepremi
 PERCENTUALI_PREMI = {
-    2: 0.08, 3: 0.12, 4: 0.20, 5: 0.25, 15: 0.35
+    2: 0.08,   # Ambo
+    3: 0.12,   # Terno
+    4: 0.20,   # Quaterna
+    5: 0.25,   # Cinquina
+    15: 0.35   # Tombola
 }
 # ==========================================
 
@@ -170,14 +175,20 @@ class GeneratoreCartelle:
             cartelle_finali.append(sub)
         return cartelle_finali
 
-# --- CONTROLLO VINCITE ---
+# --- CONTROLLO VINCITE (LOGICA SPLIT) ---
 def controlla_vincite(dati_stanza):
     target = dati_stanza.get("obbiettivo_corrente", 2)
     estratti = set(dati_stanza["numeri_estratti"])
     nomi_premi = {2: "AMBO", 3: "TERNO", 4: "QUATERNA", 5: "CINQUINA", 15: "TOMBOLA"}
     nome_premio = nomi_premi.get(target, "TOMBOLA")
-    valore_premio = dati_stanza.get("premi_valori", {}).get(str(target), 0)
     
+    # Valore totale del premio
+    valore_premio_totale = dati_stanza.get("premi_valori", {}).get(str(target), 0)
+    
+    # Inizializza registro vincite se manca
+    if "vincite_giocatori" not in dati_stanza:
+        dati_stanza["vincite_giocatori"] = {}
+
     vincitori_round = []
     
     for nome_g, cartelle in dati_stanza["giocatori"].items():
@@ -192,8 +203,21 @@ def controlla_vincite(dati_stanza):
             if win and nome_g not in vincitori_round: vincitori_round.append(nome_g)
 
     if vincitori_round:
+        num_vincitori = len(vincitori_round)
+        # Calcolo quota pro-capite (Split)
+        quota_cadauno = round(valore_premio_totale / num_vincitori, 2)
+        
+        # Aggiorna il portafoglio dei vincitori
+        for vincitore in vincitori_round:
+            vecchio_totale = dati_stanza["vincite_giocatori"].get(vincitore, 0)
+            dati_stanza["vincite_giocatori"][vincitore] = vecchio_totale + quota_cadauno
+
         testo = ", ".join(vincitori_round)
-        msg = f"Attenzione! {nome_premio} ({valore_premio} gettoni) per {testo}!"
+        if num_vincitori > 1:
+            msg = f"Attenzione! {nome_premio} DIVISO ({quota_cadauno} a testa) tra: {testo}!"
+        else:
+            msg = f"Attenzione! {nome_premio} ({valore_premio_totale}) per {testo}!"
+            
         if msg not in dati_stanza.get("messaggio_audio", ""):
             dati_stanza["messaggio_audio"] += f" ... {msg}"
         dati_stanza["messaggio_toast"] = f"🏆 {msg}"
@@ -203,6 +227,7 @@ def controlla_vincite(dati_stanza):
         else: 
             dati_stanza["messaggio_audio"] += " ... Gioco Finito!"
             dati_stanza["gioco_finito"] = True
+            
     return dati_stanza
 
 # --- INTERFACCIA ---
@@ -214,11 +239,56 @@ if menu == "🏠 Home":
     .rock-title { font-family: 'Courier New', monospace; text-align: center; color: #d63031; text-shadow: 2px 2px 0px #2d3436; margin-bottom: 30px; }
     .rock-hand { font-size: 80px; vertical-align: middle; }
     .rock-text { font-size: 80px; font-weight: 900; vertical-align: middle; padding: 0 20px; }
+    .rules-card { background-color: #f1f2f6; padding: 20px; border-radius: 10px; border-left: 5px solid #d63031; margin-bottom: 10px; }
     </style>
     <div class="rock-title"><span class="rock-hand">🤘</span><span class="rock-text">TombolaRock</span><span class="rock-hand">🤘</span></div>
-    <div style="text-align: center; font-size: 18px; color: #636e72;"><i>"La Tombola più rumorosa del Web"</i></div><hr>
     """, unsafe_allow_html=True)
-    st.markdown(f"### 🎸 Regole: Cartella {COSTO_CARTELLA} Gettoni. Let's Rock!")
+    
+    st.header("📜 Regolamento Ufficiale")
+    
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.markdown(f"""
+        <div class="rules-card">
+        <h4>1. Iscrizione</h4>
+        <ul>
+            <li>Ogni cartella costa <b>{COSTO_CARTELLA} Gettoni</b>.</li>
+            <li>Puoi acquistare massimo 6 cartelle.</li>
+            <li>Il costo delle cartelle forma il <b>Montepremi Totale</b>.</li>
+        </ul>
+        </div>
+        
+        <div class="rules-card">
+        <h4>2. Premi e Vincite</h4>
+        <p>Il Montepremi viene diviso automaticamente:</p>
+        <ul>
+            <li><b>Ambo (2 su una riga):</b> 8%</li>
+            <li><b>Terno (3 su una riga):</b> 12%</li>
+            <li><b>Quaterna (4 su una riga):</b> 20%</li>
+            <li><b>Cinquina (5 su una riga):</b> 25%</li>
+            <li><b>Tombola (Tutti i numeri):</b> 35%</li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with c2:
+        st.markdown("""
+        <div class="rules-card">
+        <h4>3. Regola dell'Ex Aequo (Split) ⚖️</h4>
+        <p>Se più giocatori realizzano la stessa vincita contemporaneamente (es. due persone fanno Ambo con lo stesso numero estratto):</p>
+        <ul>
+            <li>Il premio <b>NON</b> viene assegnato interamente a entrambi.</li>
+            <li>Il valore del premio viene <b>DIVISO EQUAMENTE</b> tra i vincitori.</li>
+            <li><i>Esempio: Premio 10 gettoni, 2 vincitori = 5 gettoni a testa.</i></li>
+        </ul>
+        </div>
+        
+        <div class="rules-card">
+        <h4>4. Svolgimento</h4>
+        <p>Il Banco (Admin) estrae i numeri. Il sistema controlla automaticamente le vincite e aggiorna i portafogli dei giocatori in tempo reale.</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 elif menu == "🆕 Crea Stanza":
     st.header("Impostazioni Banco")
@@ -237,7 +307,8 @@ elif menu == "🆕 Crea Stanza":
                     "numeri_tabellone": numeri, "numeri_estratti": [],
                     "ultimo_numero": None, "messaggio_audio": "", "messaggio_toast": "",
                     "giocatori": {}, "obbiettivo_corrente": 2, "gioco_finito": False,
-                    "montepremi": 0, "premi_valori": {}
+                    "montepremi": 0, "premi_valori": {},
+                    "vincite_giocatori": {} # Dizionario {nome: totale_vinto}
                 }
                 if banco_play:
                     dati["giocatori"]["BANCO"] = GeneratoreCartelle.genera_tombolone_completo()
@@ -290,6 +361,9 @@ elif menu == "🎮 Entra in Stanza":
         dati = load_stanza_db(stanza)
         if not dati: st.error("Errore."); st.stop()
 
+        # Inizializza vincite se manca (retrocompatibilità)
+        if "vincite_giocatori" not in dati: dati["vincite_giocatori"] = {}
+
         with st.sidebar:
             st.divider()
             st.markdown(f"## 💰 JackPot: {dati.get('montepremi', 0)}")
@@ -300,10 +374,26 @@ elif menu == "🎮 Entra in Stanza":
                 if k == curr_target and not dati.get("gioco_finito"): st.markdown(f"👉 **{nome}: {val}**")
                 elif float(k) < float(curr_target): st.markdown(f"~~{nome}: {val}~~ ✅")
                 else: st.markdown(f"{nome}: {val}")
+            
             st.divider()
             st.markdown(f"### 👥 Rockers ({len(dati['giocatori'])})")
-            for g in sorted(dati["giocatori"].keys()):
-                st.markdown(f"{'🏦' if 'BANCO' in g else '👤'} {g}")
+            
+            # ORDINAMENTO: Prima Banco, poi per Vincite decrescenti, poi nome
+            lista_g = list(dati["giocatori"].keys())
+            def sort_key(x):
+                is_banco = 0 if "BANCO" in x else 1
+                vincita = dati["vincite_giocatori"].get(x, 0)
+                return (is_banco, -vincita, x)
+            
+            for g in sorted(lista_g, key=sort_key):
+                n_cart = len(dati["giocatori"][g])
+                vincita_tot = dati["vincite_giocatori"].get(g, 0)
+                
+                icon = "🏦" if "BANCO" in g else "👤"
+                soldi_str = f" | 💰 {vincita_tot:.2f}" if vincita_tot > 0 else ""
+                
+                style = "**" if g == mio_nome else ""
+                st.markdown(f"{style}{icon} {g} ({n_cart}c){soldi_str}{style}")
 
         estratti = dati["numeri_estratti"]
         ultimo = dati["ultimo_numero"]
@@ -323,7 +413,7 @@ elif menu == "🎮 Entra in Stanza":
         tgt_name = nomi_target.get(str(tgt_code), 'FINE')
         tgt_val = dati.get("premi_valori", {}).get(str(tgt_code), 0)
         
-        # --- SEZIONE AUDIO / VIDEO IN ALTO ---
+        # --- SEZIONE AUDIO ---
         if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
         if msg_audio and msg_audio != st.session_state.last_audio_msg:
             speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
@@ -338,7 +428,7 @@ elif menu == "🎮 Entra in Stanza":
             st.info(f"Prossimo Obiettivo: **{tgt_name} ({tgt_val} gettoni)**")
         else: st.info("Waiting for the show...")
 
-        # --- PANNELLO ADMIN (Sotto o di lato) ---
+        # --- PANNELLO ADMIN ---
         if ruolo == "ADMIN":
             st.warning(f"👮 PANNELLO BANCO")
             col_auto, col_man = st.columns(2)
@@ -363,25 +453,14 @@ elif menu == "🎮 Entra in Stanza":
                 if st.button("🎱 ESTRAI MANUALE", type="primary", disabled=usa_auto): 
                     if estrai(): st.rerun()
 
-            # --- LOGICA AUTO-PLAY CORRETTA ---
-            # 1. Mostra il numero corrente (già renderizzato sopra)
-            # 2. Aspetta il tempo necessario
-            # 3. Estrae il NUOVO numero
-            # 4. Ricarica
             if usa_auto and not dati.get("gioco_finito"):
                 if len(dati["numeri_tabellone"]) > 0:
                     stat.write(f"⏳ Prossimo numero tra {tempo}s...")
-                    # 1. Aspetta
                     for i in range(100): 
                         time.sleep(tempo/100)
                         p_bar.progress(i+1)
-                    
-                    # 2. Estrai
                     esito = estrai()
-                    
-                    # 3. Ricarica per mostrare il nuovo numero
-                    if esito:
-                        st.rerun()
+                    if esito: st.rerun()
                 else: st.warning("Fine numeri.")
 
         with st.expander("Tabellone", expanded=True):
