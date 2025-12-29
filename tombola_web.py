@@ -348,4 +348,59 @@ elif menu == "🎮 Entra in Stanza":
                     n = dati["numeri_tabellone"].pop(0)
                     dati["numeri_estratti"].append(n)
                     dati["ultimo_numero"] = n
-                    dati["messaggio_audio"]
+                    dati["messaggio_audio"] = f"{n}. {get_smorfia_text(n)}."
+                    dati["messaggio_toast"] = ""
+                    d = controlla_vincite(dati)
+                    save_stanza_db(stanza, d)
+                    return True
+                return False
+
+            with col_auto:
+                usa_auto = st.toggle("Auto-Play")
+                tempo = st.slider("Sec", 3, 20, 6)
+                p_bar = st.progress(0); stat = st.empty()
+            with col_man:
+                if st.button("🎱 ESTRAI MANUALE", type="primary", disabled=usa_auto): 
+                    if estrai(): st.rerun()
+
+            # --- LOGICA AUTO-PLAY CORRETTA ---
+            # 1. Mostra il numero corrente (già renderizzato sopra)
+            # 2. Aspetta il tempo necessario
+            # 3. Estrae il NUOVO numero
+            # 4. Ricarica
+            if usa_auto and not dati.get("gioco_finito"):
+                if len(dati["numeri_tabellone"]) > 0:
+                    stat.write(f"⏳ Prossimo numero tra {tempo}s...")
+                    # 1. Aspetta
+                    for i in range(100): 
+                        time.sleep(tempo/100)
+                        p_bar.progress(i+1)
+                    
+                    # 2. Estrai
+                    esito = estrai()
+                    
+                    # 3. Ricarica per mostrare il nuovo numero
+                    if esito:
+                        st.rerun()
+                else: st.warning("Fine numeri.")
+
+        with st.expander("Tabellone", expanded=True):
+            st.markdown("""<style>.g{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}.c{border:1px solid #ccc;text-align:center;padding:5px;font-size:12px;background:#eee}.Ex{background:#d63031;color:white;font-weight:bold;transform:scale(1.1);border:1px solid black}</style>""", unsafe_allow_html=True)
+            h = '<div class="g">'
+            for i in range(1, 91): h+=f'<div class="c {"Ex" if i in estratti else ""}">{i}</div>'
+            st.markdown(h+'</div>', unsafe_allow_html=True)
+
+        st.divider(); st.subheader("Le Tue Cartelle")
+        mie = dati["giocatori"].get(mio_nome, [])
+        cols = st.columns(3)
+        st.markdown("""<style>.ct{width:100%;border-collapse:collapse;margin-bottom:10px;background:white}.cc{border:1px solid #333;width:11%;text-align:center;height:30px;font-weight:bold}.ch{background-color:#d63031;color:white}.ce{background-color:#b2bec3}</style>""", unsafe_allow_html=True)
+        for idx, m in enumerate(mie):
+            with cols[idx%3]:
+                h = f"<b>C. {idx+1}</b><table class='ct'>"
+                for r in m:
+                    h+="<tr>"
+                    for v in r: h+=f"<td class='cc {'ce' if v==0 else ('ch' if v in estratti else '')}'>{v if v!=0 else ''}</td>"
+                    h+="</tr>"
+                st.markdown(h+"</table>", unsafe_allow_html=True)
+
+        if ruolo == "PLAYER": time.sleep(3); st.rerun()
