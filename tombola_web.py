@@ -127,18 +127,39 @@ class GeneratoreCartelle:
 
 # --- FUNZIONI DI SUPPORTO ---
 def autoplay_audio(text):
+    """Genera audio e lo riproduce automaticamente nel browser con trucco JS"""
     if not text: return
     try:
         sound_file = BytesIO()
         tts = gTTS(text, lang='it')
         tts.write_to_fp(sound_file)
+        
         b64 = base64.b64encode(sound_file.getvalue()).decode()
+        
+        # Generiamo un ID univoco basato sul tempo per ingannare la cache del browser
+        # e forzare il ricaricamento del player
+        unique_id = f"audio_{int(time.time() * 1000)}"
+        
         md = f"""
-            <audio autoplay>
-            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+            <audio id="{unique_id}" autoplay>
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
             </audio>
+            
+            <script>
+                (function() {{
+                    var audio = document.getElementById("{unique_id}");
+                    if (audio) {{
+                        audio.volume = 1.0;
+                        audio.play().catch(function(error) {{
+                            console.log("Autoplay bloccato dal browser: " + error);
+                        }});
+                    }}
+                }})();
+            </script>
             """
-        st.markdown(md, unsafe_allow_html=True)
+        # Usiamo st.empty() per creare un contenitore volatile che forza il refresh
+        st.empty().markdown(md, unsafe_allow_html=True)
+        
     except Exception as e:
         st.error(f"Errore audio: {e}")
 
