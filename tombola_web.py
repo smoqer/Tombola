@@ -13,15 +13,10 @@ st.set_page_config(page_title="TombolaRock", layout="wide", page_icon="🤘")
 # ==========================================
 # ⚙️ IMPOSTAZIONI ECONOMICHE
 # ==========================================
-COSTO_CARTELLA = 5  # Costo in gettoni
+COSTO_CARTELLA = 5 
 
-# Percentuali Montepremi
 PERCENTUALI_PREMI = {
-    2: 0.08,   # Ambo
-    3: 0.12,   # Terno
-    4: 0.20,   # Quaterna
-    5: 0.25,   # Cinquina
-    15: 0.35   # Tombola
+    2: 0.08, 3: 0.12, 4: 0.20, 5: 0.25, 15: 0.35
 }
 # ==========================================
 
@@ -211,63 +206,19 @@ def controlla_vincite(dati_stanza):
     return dati_stanza
 
 # --- INTERFACCIA ---
-# Titolo Principale in alto a sinistra (piccolo)
-# st.title("TombolaRock 🤘") 
-
 menu = st.sidebar.radio("Navigazione", ["🏠 Home", "🆕 Crea Stanza", "🎮 Entra in Stanza"])
 
 if menu == "🏠 Home":
-    # --- HOMEPAGE ROCK CUSTOMIZZATA ---
     st.markdown("""
     <style>
-    .rock-title {
-        font-family: 'Courier New', monospace;
-        text-align: center;
-        color: #d63031; /* Rosso Rock */
-        text-shadow: 2px 2px 0px #2d3436;
-        margin-bottom: 30px;
-    }
-    .rock-hand {
-        font-size: 80px;
-        vertical-align: middle;
-    }
-    .rock-text {
-        font-size: 80px;
-        font-weight: 900;
-        vertical-align: middle;
-        padding: 0 20px;
-    }
+    .rock-title { font-family: 'Courier New', monospace; text-align: center; color: #d63031; text-shadow: 2px 2px 0px #2d3436; margin-bottom: 30px; }
+    .rock-hand { font-size: 80px; vertical-align: middle; }
+    .rock-text { font-size: 80px; font-weight: 900; vertical-align: middle; padding: 0 20px; }
     </style>
-    
-    <div class="rock-title">
-        <span class="rock-hand">🤘</span>
-        <span class="rock-text">TombolaRock</span>
-        <span class="rock-hand">🤘</span>
-    </div>
-    
-    <div style="text-align: center; font-size: 18px; color: #636e72;">
-        <i>"La Tombola più rumorosa del Web"</i>
-    </div>
-    <hr>
+    <div class="rock-title"><span class="rock-hand">🤘</span><span class="rock-text">TombolaRock</span><span class="rock-hand">🤘</span></div>
+    <div style="text-align: center; font-size: 18px; color: #636e72;"><i>"La Tombola più rumorosa del Web"</i></div><hr>
     """, unsafe_allow_html=True)
-
-    st.markdown(f"""
-    ### 🎸 Regole del Gioco
-    
-    1. **Entra nella Stanza** creata dal Banco.
-    2. **Acquista le cartelle**: Costano **{COSTO_CARTELLA} Gettoni** l'una.
-    3. Il **Montepremi** viene calcolato automaticamente e diviso così:
-    
-    | Premio | % Montepremi |
-    | :--- | :--- |
-    | **Ambo** | 8% |
-    | **Terno** | 12% |
-    | **Quaterna** | 20% |
-    | **Cinquina** | 25% |
-    | **Tombola** | 35% |
-    
-    🔥 **Let's Rock!**
-    """)
+    st.markdown(f"### 🎸 Regole: Cartella {COSTO_CARTELLA} Gettoni. Let's Rock!")
 
 elif menu == "🆕 Crea Stanza":
     st.header("Impostazioni Banco")
@@ -279,7 +230,7 @@ elif menu == "🆕 Crea Stanza":
             if not nome or not pwd: st.error("Dati mancanti.")
             else:
                 exist = load_stanza_db(nome)
-                if exist: st.warning("Sovrascritta stanza esistente.")
+                if exist: st.warning("Sovrascritta.")
                 numeri = list(range(1, 91)); random.shuffle(numeri)
                 dati = {
                     "admin_pwd": pwd, "created_at": str(datetime.now()),
@@ -291,7 +242,6 @@ elif menu == "🆕 Crea Stanza":
                 if banco_play:
                     dati["giocatori"]["BANCO"] = GeneratoreCartelle.genera_tombolone_completo()
                     dati = ricalcola_economia(dati)
-                
                 save_stanza_db(nome, dati)
                 st.session_state.ruolo = "ADMIN"
                 st.session_state.stanza_corrente = nome
@@ -306,12 +256,9 @@ elif menu == "🎮 Entra in Stanza":
         inp_nome = c2.text_input("Il tuo Nome").strip().upper()
         is_admin = st.checkbox("Sono Admin")
         pwd_in = st.text_input("Password", type="password") if is_admin else ""
+        n_cart = st.slider(f"Cartelle ({COSTO_CARTELLA} gettoni cad.)", 1, 6, 1)
         
-        st.info(f"Ogni cartella costa {COSTO_CARTELLA} Gettoni 🪙")
-        n_cart = st.slider("Cartelle da acquistare", 1, 6, 1)
-        tot_da_pagare = n_cart * COSTO_CARTELLA
-        
-        if st.button(f"PAGA {tot_da_pagare} GETTONI ED ENTRA"):
+        if st.button(f"PAGA {n_cart*COSTO_CARTELLA} E ENTRA"):
             d = load_stanza_db(inp_stanza)
             if not d: st.error("Stanza non trovata.")
             else:
@@ -325,7 +272,7 @@ elif menu == "🎮 Entra in Stanza":
                 else:
                     if inp_nome:
                         if inp_nome not in d["giocatori"]:
-                            if len(d["giocatori"]) >= 20: st.error("Stanza piena.")
+                            if len(d["giocatori"]) >= 20: st.error("Piena.")
                             else:
                                 d["giocatori"][inp_nome] = [GeneratoreCartelle.genera_matrice_3x9() for _ in range(n_cart)]
                                 d = ricalcola_economia(d)
@@ -341,35 +288,23 @@ elif menu == "🎮 Entra in Stanza":
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
         dati = load_stanza_db(stanza)
-        
-        if not dati: st.error("Errore connessione."); st.stop()
+        if not dati: st.error("Errore."); st.stop()
 
-        # SIDEBAR
         with st.sidebar:
             st.divider()
-            tot_soldi = dati.get("montepremi", 0)
-            premi = dati.get("premi_valori", {})
-            curr_target = str(dati.get("obbiettivo_corrente", 15))
-            
-            st.markdown(f"## 💰 JackPot: {tot_soldi}")
+            st.markdown(f"## 💰 JackPot: {dati.get('montepremi', 0)}")
             nomi_target = { "2": "Ambo", "3": "Terno", "4": "Quaterna", "5": "Cinquina", "15": "Tombola" }
-            for k, val in premi.items():
+            curr_target = str(dati.get("obbiettivo_corrente", 15))
+            for k, val in dati.get("premi_valori", {}).items():
                 nome = nomi_target.get(k, k)
-                if k == curr_target and not dati.get("gioco_finito"):
-                    st.markdown(f"👉 **{nome}: {val}** 🪙")
-                elif float(k) < float(curr_target):
-                    st.markdown(f"~~{nome}: {val}~~ ✅") 
-                else:
-                    st.markdown(f"{nome}: {val}")
+                if k == curr_target and not dati.get("gioco_finito"): st.markdown(f"👉 **{nome}: {val}**")
+                elif float(k) < float(curr_target): st.markdown(f"~~{nome}: {val}~~ ✅")
+                else: st.markdown(f"{nome}: {val}")
             st.divider()
             st.markdown(f"### 👥 Rockers ({len(dati['giocatori'])})")
             for g in sorted(dati["giocatori"].keys()):
-                n = len(dati["giocatori"][g])
-                icon = "🏦" if "BANCO" in g else "👤"
-                if g == mio_nome: st.markdown(f"**{icon} {g} ({n})**")
-                else: st.markdown(f"{icon} {g} ({n})")
+                st.markdown(f"{'🏦' if 'BANCO' in g else '👤'} {g}")
 
-        # LOGICA
         estratti = dati["numeri_estratti"]
         ultimo = dati["ultimo_numero"]
         msg_audio = dati.get("messaggio_audio", "")
@@ -385,38 +320,10 @@ elif menu == "🎮 Entra in Stanza":
                 if dati.get("gioco_finito"): st.balloons()
 
         tgt_code = dati.get('obbiettivo_corrente', 2)
-        tgt_name = nomi_p = {2:"AMBO", 3:"TERNO", 4:"QUATERNA", 5:"CINQUINA", 15:"TOMBOLA"}.get(tgt_code, 'FINE')
+        tgt_name = nomi_target.get(str(tgt_code), 'FINE')
         tgt_val = dati.get("premi_valori", {}).get(str(tgt_code), 0)
         
-        if ruolo == "ADMIN":
-            st.info(f"👮 BANCO - Obiettivo: **{tgt_name} ({tgt_val})**")
-            col_auto, col_man = st.columns(2)
-            def estrai():
-                if len(dati["numeri_tabellone"]) > 0 and not dati.get("gioco_finito"):
-                    n = dati["numeri_tabellone"].pop(0)
-                    dati["numeri_estratti"].append(n)
-                    dati["ultimo_numero"] = n
-                    dati["messaggio_audio"] = f"{n}. {get_smorfia_text(n)}."
-                    dati["messaggio_toast"] = ""
-                    d = controlla_vincite(dati)
-                    save_stanza_db(stanza, d)
-                    return True
-                return False
-            with col_auto:
-                usa_auto = st.toggle("Auto-Play")
-                tempo = st.slider("Sec", 3, 20, 6)
-                p_bar = st.progress(0); stat = st.empty()
-            with col_man:
-                if st.button("🎱 ESTRAI", type="primary", disabled=usa_auto): 
-                    if estrai(): st.rerun()
-            if usa_auto and not dati.get("gioco_finito"):
-                if len(dati["numeri_tabellone"]) > 0:
-                    stat.write(f"⏳ Next in {tempo}s..."); esito = estrai()
-                    if esito:
-                        for i in range(100): time.sleep(tempo/100); p_bar.progress(i+1)
-                        st.rerun()
-                else: st.warning("Fine numeri.")
-
+        # --- SEZIONE AUDIO / VIDEO IN ALTO ---
         if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
         if msg_audio and msg_audio != st.session_state.last_audio_msg:
             speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
@@ -431,23 +338,14 @@ elif menu == "🎮 Entra in Stanza":
             st.info(f"Prossimo Obiettivo: **{tgt_name} ({tgt_val} gettoni)**")
         else: st.info("Waiting for the show...")
 
-        with st.expander("Tabellone", expanded=True):
-            st.markdown("""<style>.g{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}.c{border:1px solid #ccc;text-align:center;padding:5px;font-size:12px;background:#eee}.Ex{background:#d63031;color:white;font-weight:bold;transform:scale(1.1);border:1px solid black}</style>""", unsafe_allow_html=True)
-            h = '<div class="g">'
-            for i in range(1, 91): h+=f'<div class="c {"Ex" if i in estratti else ""}">{i}</div>'
-            st.markdown(h+'</div>', unsafe_allow_html=True)
-
-        st.divider(); st.subheader("Le Tue Cartelle")
-        mie = dati["giocatori"].get(mio_nome, [])
-        cols = st.columns(3)
-        st.markdown("""<style>.ct{width:100%;border-collapse:collapse;margin-bottom:10px;background:white}.cc{border:1px solid #333;width:11%;text-align:center;height:30px;font-weight:bold}.ch{background-color:#d63031;color:white}.ce{background-color:#b2bec3}</style>""", unsafe_allow_html=True)
-        for idx, m in enumerate(mie):
-            with cols[idx%3]:
-                h = f"<b>C. {idx+1}</b><table class='ct'>"
-                for r in m:
-                    h+="<tr>"
-                    for v in r: h+=f"<td class='cc {'ce' if v==0 else ('ch' if v in estratti else '')}'>{v if v!=0 else ''}</td>"
-                    h+="</tr>"
-                st.markdown(h+"</table>", unsafe_allow_html=True)
-
-        if ruolo == "PLAYER": time.sleep(3); st.rerun()
+        # --- PANNELLO ADMIN (Sotto o di lato) ---
+        if ruolo == "ADMIN":
+            st.warning(f"👮 PANNELLO BANCO")
+            col_auto, col_man = st.columns(2)
+            
+            def estrai():
+                if len(dati["numeri_tabellone"]) > 0 and not dati.get("gioco_finito"):
+                    n = dati["numeri_tabellone"].pop(0)
+                    dati["numeri_estratti"].append(n)
+                    dati["ultimo_numero"] = n
+                    dati["messaggio_audio"]
