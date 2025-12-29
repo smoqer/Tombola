@@ -81,23 +81,25 @@ def speak_dual_language(numero, testo_smorfia):
     """
     Legge il numero in Italiano.
     Legge il titolo in Inglese (Rock) o Italiano (Litfiba/Smorfia classica).
+    SE C'È UNA VINCITA ("Attenzione"), FORZA L'ITALIANO.
     """
     if not testo_smorfia: return
 
-    # Lista degli ID delle canzoni dei LITFIBA (che vanno lette in Italiano)
-    ids_italiani = [3, 10, 17, 25, 30, 37, 44, 49, 56, 65, 73, 83, 86, 88, 90]
-    
-    # Se il numero è nella lista Litfiba, usa it-IT, altrimenti en-US (Inglese)
-    # Se per caso il numero non è intero (es. errore), usa IT per sicurezza
-    try:
-        num_int = int(numero)
-        lang_title = 'it-IT' if num_int in ids_italiani else 'en-US'
-    except:
+    # 1. CONTROLLO VINCITA (Priorità Massima)
+    # Se c'è una vincita, dobbiamo parlare italiano, ignorando il resto.
+    if "Attenzione" in testo_smorfia or "Vincita" in testo_smorfia:
         lang_title = 'it-IT'
     
-    text_safe = testo_smorfia.replace("'", "\\'").replace('"', '\\"')
+    else:
+        # 2. CONTROLLO LITFIBA vs ROCK
+        ids_italiani = [3, 10, 17, 25, 30, 37, 44, 49, 56, 65, 73, 83, 86, 88, 90]
+        try:
+            num_int = int(numero)
+            lang_title = 'it-IT' if num_int in ids_italiani else 'en-US'
+        except:
+            lang_title = 'it-IT'
     
-    # ID univoco basato sul tempo per forzare il refresh del componente
+    text_safe = testo_smorfia.replace("'", "\\'").replace('"', '\\"')
     u_id = int(time.time() * 1000)
     
     js = f"""
@@ -106,22 +108,23 @@ def speak_dual_language(numero, testo_smorfia):
             (function() {{
                 window.speechSynthesis.cancel();
                 
-                // 1. Voce ITALIANA per il NUMERO
-                var msgNum = new SpeechSynthesisUtterance('{numero}.');
-                msgNum.lang = 'it-IT';
-                msgNum.rate = 1.0; 
-                window.speechSynthesis.speak(msgNum);
+                // Legge il NUMERO (sempre IT)
+                // Solo se "numero" è un vero numero e non nullo
+                if ('{numero}' !== 'None' && '{numero}' !== '') {{
+                    var msgNum = new SpeechSynthesisUtterance('{numero}.');
+                    msgNum.lang = 'it-IT';
+                    window.speechSynthesis.speak(msgNum);
+                }}
                 
-                // 2. Voce INGLESE (o IT per Litfiba) per il TITOLO
+                // Legge il TESTO (Lingua calcolata sopra)
                 var msgTitle = new SpeechSynthesisUtterance('{text_safe}');
                 msgTitle.lang = '{lang_title}';
-                msgTitle.rate = 0.9; // Leggermente più lento per fare scena
+                msgTitle.rate = 0.9; 
                 window.speechSynthesis.speak(msgTitle);
             }})();
         </script>
     """
     st.components.v1.html(js, height=0, width=0)
-
 # --- CLASSE GENERATORE CARTELLE ---
 class GeneratoreCartelle:
     @staticmethod
