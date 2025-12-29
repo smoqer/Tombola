@@ -72,6 +72,20 @@ def save_stanza_db(nome_stanza, dati_dizionario):
     finally:
         if conn and conn.is_connected(): conn.close()
 
+def delete_stanza_db(nome_stanza):
+    """Cancella fisicamente la stanza dal database"""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        query = "DELETE FROM stanze_tombola WHERE nome_stanza = %s"
+        cursor.execute(query, (nome_stanza,))
+        conn.commit()
+    except Error as e:
+        st.error(f"Errore cancellazione DB: {e}")
+    finally:
+        if conn and conn.is_connected(): conn.close()
+
 # --- LOGICA CALCOLO MONTEPREMI ---
 def ricalcola_economia(dati_stanza):
     tot_cartelle = 0
@@ -175,20 +189,15 @@ class GeneratoreCartelle:
             cartelle_finali.append(sub)
         return cartelle_finali
 
-# --- CONTROLLO VINCITE (LOGICA SPLIT) ---
+# --- CONTROLLO VINCITE ---
 def controlla_vincite(dati_stanza):
     target = dati_stanza.get("obbiettivo_corrente", 2)
     estratti = set(dati_stanza["numeri_estratti"])
     nomi_premi = {2: "AMBO", 3: "TERNO", 4: "QUATERNA", 5: "CINQUINA", 15: "TOMBOLA"}
     nome_premio = nomi_premi.get(target, "TOMBOLA")
-    
-    # Valore totale del premio
     valore_premio_totale = dati_stanza.get("premi_valori", {}).get(str(target), 0)
     
-    # Inizializza registro vincite se manca
-    if "vincite_giocatori" not in dati_stanza:
-        dati_stanza["vincite_giocatori"] = {}
-
+    if "vincite_giocatori" not in dati_stanza: dati_stanza["vincite_giocatori"] = {}
     vincitori_round = []
     
     for nome_g, cartelle in dati_stanza["giocatori"].items():
@@ -204,17 +213,14 @@ def controlla_vincite(dati_stanza):
 
     if vincitori_round:
         num_vincitori = len(vincitori_round)
-        # Calcolo quota pro-capite (Split)
         quota_cadauno = round(valore_premio_totale / num_vincitori, 2)
-        
-        # Aggiorna il portafoglio dei vincitori
         for vincitore in vincitori_round:
             vecchio_totale = dati_stanza["vincite_giocatori"].get(vincitore, 0)
             dati_stanza["vincite_giocatori"][vincitore] = vecchio_totale + quota_cadauno
 
         testo = ", ".join(vincitori_round)
         if num_vincitori > 1:
-            msg = f"Attenzione! {nome_premio} DIVISO ({quota_cadauno} a testa) tra: {testo}!"
+            msg = f"Attenzione! {nome_premio} SPLIT ({quota_cadauno} cad.) tra: {testo}!"
         else:
             msg = f"Attenzione! {nome_premio} ({valore_premio_totale}) per {testo}!"
             
@@ -227,7 +233,6 @@ def controlla_vincite(dati_stanza):
         else: 
             dati_stanza["messaggio_audio"] += " ... Gioco Finito!"
             dati_stanza["gioco_finito"] = True
-            
     return dati_stanza
 
 # --- INTERFACCIA ---
@@ -243,50 +248,28 @@ if menu == "🏠 Home":
     </style>
     <div class="rock-title"><span class="rock-hand">🤘</span><span class="rock-text">TombolaRock</span><span class="rock-hand">🤘</span></div>
     """, unsafe_allow_html=True)
-    
     st.header("📜 Regolamento Ufficiale")
-    
     c1, c2 = st.columns(2)
-    
     with c1:
         st.markdown(f"""
         <div class="rules-card">
         <h4>1. Iscrizione</h4>
-        <ul>
-            <li>Ogni cartella costa <b>{COSTO_CARTELLA} Gettoni</b>.</li>
-            <li>Puoi acquistare massimo 6 cartelle.</li>
-            <li>Il costo delle cartelle forma il <b>Montepremi Totale</b>.</li>
-        </ul>
+        <ul><li>Costo: <b>{COSTO_CARTELLA} Gettoni</b> a cartella.</li><li>Max 6 cartelle.</li></ul>
         </div>
-        
         <div class="rules-card">
-        <h4>2. Premi e Vincite</h4>
-        <p>Il Montepremi viene diviso automaticamente:</p>
-        <ul>
-            <li><b>Ambo (2 su una riga):</b> 8%</li>
-            <li><b>Terno (3 su una riga):</b> 12%</li>
-            <li><b>Quaterna (4 su una riga):</b> 20%</li>
-            <li><b>Cinquina (5 su una riga):</b> 25%</li>
-            <li><b>Tombola (Tutti i numeri):</b> 35%</li>
-        </ul>
+        <h4>2. Premi (%)</h4>
+        <ul><li>Ambo: 8%</li><li>Terno: 12%</li><li>Quaterna: 20%</li><li>Cinquina: 25%</li><li>Tombola: 35%</li></ul>
         </div>
         """, unsafe_allow_html=True)
-        
     with c2:
         st.markdown("""
         <div class="rules-card">
-        <h4>3. Regola dell'Ex Aequo (Split) ⚖️</h4>
-        <p>Se più giocatori realizzano la stessa vincita contemporaneamente (es. due persone fanno Ambo con lo stesso numero estratto):</p>
-        <ul>
-            <li>Il premio <b>NON</b> viene assegnato interamente a entrambi.</li>
-            <li>Il valore del premio viene <b>DIVISO EQUAMENTE</b> tra i vincitori.</li>
-            <li><i>Esempio: Premio 10 gettoni, 2 vincitori = 5 gettoni a testa.</i></li>
-        </ul>
+        <h4>3. Ex Aequo ⚖️</h4>
+        <p>In caso di vincita simultanea, il premio viene <b>DIVISO</b> equamente tra i vincitori.</p>
         </div>
-        
         <div class="rules-card">
-        <h4>4. Svolgimento</h4>
-        <p>Il Banco (Admin) estrae i numeri. Il sistema controlla automaticamente le vincite e aggiorna i portafogli dei giocatori in tempo reale.</p>
+        <h4>4. Lobby</h4>
+        <p>La partita inizia solo quando l'Admin chiude le iscrizioni. Fino ad allora: <b>Sala d'Attesa</b>.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -295,20 +278,20 @@ elif menu == "🆕 Crea Stanza":
     with st.form("crea"):
         nome = st.text_input("Nome Stanza", max_chars=15).upper().strip()
         pwd = st.text_input("Password Admin", type="password")
-        banco_play = st.checkbox(f"Il Banco gioca (paga {6*COSTO_CARTELLA} gettoni)?", True)
+        banco_play = st.checkbox(f"Il Banco gioca (paga {6*COSTO_CARTELLA})?", True)
         if st.form_submit_button("Crea Stanza"):
             if not nome or not pwd: st.error("Dati mancanti.")
             else:
                 exist = load_stanza_db(nome)
-                if exist: st.warning("Sovrascritta.")
+                if exist: st.warning("Stanza resettata.")
                 numeri = list(range(1, 91)); random.shuffle(numeri)
                 dati = {
                     "admin_pwd": pwd, "created_at": str(datetime.now()),
                     "numeri_tabellone": numeri, "numeri_estratti": [],
                     "ultimo_numero": None, "messaggio_audio": "", "messaggio_toast": "",
                     "giocatori": {}, "obbiettivo_corrente": 2, "gioco_finito": False,
-                    "montepremi": 0, "premi_valori": {},
-                    "vincite_giocatori": {} # Dizionario {nome: totale_vinto}
+                    "montepremi": 0, "premi_valori": {}, "vincite_giocatori": {},
+                    "stato": "LOBBY" # Nuovo Stato
                 }
                 if banco_play:
                     dati["giocatori"]["BANCO"] = GeneratoreCartelle.genera_tombolone_completo()
@@ -341,7 +324,10 @@ elif menu == "🎮 Entra in Stanza":
                         st.rerun()
                     else: st.error("Password errata.")
                 else:
-                    if inp_nome:
+                    # CONTROLLO LOBBY APERTA
+                    if d.get("stato", "LOBBY") != "LOBBY":
+                        st.error("🚫 I cancelli sono chiusi! Il concerto è già iniziato.")
+                    elif inp_nome:
                         if inp_nome not in d["giocatori"]:
                             if len(d["giocatori"]) >= 20: st.error("Piena.")
                             else:
@@ -354,16 +340,54 @@ elif menu == "🎮 Entra in Stanza":
                         st.rerun()
                     else: st.error("Inserisci nome.")
     else:
-        # --- PARTITA IN CORSO ---
+        # --- PARTITA IN CORSO (O LOBBY) ---
         stanza = st.session_state.stanza_corrente
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
         dati = load_stanza_db(stanza)
-        if not dati: st.error("Errore."); st.stop()
+        if not dati: 
+            st.error("La stanza è stata chiusa o cancellata dall'Admin.")
+            if st.button("Torna alla Home"):
+                st.session_state.clear()
+                st.rerun()
+            st.stop()
 
-        # Inizializza vincite se manca (retrocompatibilità)
-        if "vincite_giocatori" not in dati: dati["vincite_giocatori"] = {}
+        stato_partita = dati.get("stato", "LOBBY")
+        
+        # --- GESTIONE LOBBY ---
+        if stato_partita == "LOBBY":
+            st.markdown(f"## ⏳ LOBBY: {stanza}")
+            st.info("In attesa che l'Admin inizi la partita. I giocatori possono ancora unirsi.")
+            
+            # Montepremi Live
+            col_m, col_p = st.columns(2)
+            col_m.metric("Montepremi Attuale", f"{dati.get('montepremi', 0)} 🪙")
+            col_p.metric("Giocatori Pronti", len(dati['giocatori']))
+            
+            st.divider()
+            st.write("### Chi c'è nel Backstage:")
+            # Griglia Partecipanti
+            cols = st.columns(4)
+            for i, g in enumerate(dati['giocatori']):
+                cols[i % 4].success(f"🎸 {g}")
 
+            # ADMIN START BUTTON
+            if ruolo == "ADMIN":
+                st.divider()
+                st.markdown("### 👮 Comandi Banco")
+                if st.button("🎸 INIZIA IL CONCERTO (Chiudi Ingressi)", type="primary"):
+                    dati["stato"] = "IN_CORSO"
+                    save_stanza_db(stanza, dati)
+                    st.rerun()
+            
+            # Auto refresh per vedere chi entra
+            time.sleep(3)
+            st.rerun()
+            st.stop() # Ferma l'esecuzione qui se siamo in Lobby
+
+        # --- GESTIONE PARTITA AVVIATA ---
+        
+        # SIDEBAR
         with st.sidebar:
             st.divider()
             st.markdown(f"## 💰 JackPot: {dati.get('montepremi', 0)}")
@@ -378,20 +402,17 @@ elif menu == "🎮 Entra in Stanza":
             st.divider()
             st.markdown(f"### 👥 Rockers ({len(dati['giocatori'])})")
             
-            # ORDINAMENTO: Prima Banco, poi per Vincite decrescenti, poi nome
             lista_g = list(dati["giocatori"].keys())
             def sort_key(x):
                 is_banco = 0 if "BANCO" in x else 1
-                vincita = dati["vincite_giocatori"].get(x, 0)
+                vincita = dati.get("vincite_giocatori", {}).get(x, 0)
                 return (is_banco, -vincita, x)
             
             for g in sorted(lista_g, key=sort_key):
                 n_cart = len(dati["giocatori"][g])
-                vincita_tot = dati["vincite_giocatori"].get(g, 0)
-                
+                vincita_tot = dati.get("vincite_giocatori", {}).get(g, 0)
                 icon = "🏦" if "BANCO" in g else "👤"
                 soldi_str = f" | 💰 {vincita_tot:.2f}" if vincita_tot > 0 else ""
-                
                 style = "**" if g == mio_nome else ""
                 st.markdown(f"{style}{icon} {g} ({n_cart}c){soldi_str}{style}")
 
@@ -402,7 +423,17 @@ elif menu == "🎮 Entra in Stanza":
 
         c1, c2 = st.columns([3,1])
         c1.markdown(f"## Stanza: **{stanza}** | Player: *{mio_nome}*")
-        if c2.button("🚪 Esci"): st.session_state.clear(); st.rerun()
+        
+        # LOGICA USCITA/CANCELLAZIONE
+        if ruolo == "ADMIN":
+            if c2.button("🧨 DISTRUGGI STANZA ED ESCI", type="primary"):
+                delete_stanza_db(stanza)
+                st.session_state.clear()
+                st.rerun()
+        else:
+            if c2.button("🚪 Esci"): 
+                st.session_state.clear()
+                st.rerun()
 
         if msg_toast:
             if 'last_toast' not in st.session_state or st.session_state.last_toast != msg_toast:
@@ -413,7 +444,6 @@ elif menu == "🎮 Entra in Stanza":
         tgt_name = nomi_target.get(str(tgt_code), 'FINE')
         tgt_val = dati.get("premi_valori", {}).get(str(tgt_code), 0)
         
-        # --- SEZIONE AUDIO ---
         if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
         if msg_audio and msg_audio != st.session_state.last_audio_msg:
             speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
@@ -426,9 +456,8 @@ elif menu == "🎮 Entra in Stanza":
             </div>
             """, unsafe_allow_html=True)
             st.info(f"Prossimo Obiettivo: **{tgt_name} ({tgt_val} gettoni)**")
-        else: st.info("Waiting for the show...")
+        else: st.info("Il concerto sta per iniziare...")
 
-        # --- PANNELLO ADMIN ---
         if ruolo == "ADMIN":
             st.warning(f"👮 PANNELLO BANCO")
             col_auto, col_man = st.columns(2)
