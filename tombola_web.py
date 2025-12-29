@@ -1,9 +1,7 @@
 import streamlit as st
 import random
 import time
-import base64
-from gtts import gTTS
-from io import BytesIO
+import json
 
 # --- IMPORT SMORFIA ---
 try:
@@ -22,7 +20,6 @@ class GeneratoreCartelle:
             (1, 10), (10, 20), (20, 30), (30, 40), (40, 50),
             (50, 60), (60, 70), (70, 80), (80, 91)
         ]
-        # Riempimento base
         for r in range(3):
             colonne_scelte = random.sample(range(9), 5)
             colonne_scelte.sort()
@@ -34,7 +31,6 @@ class GeneratoreCartelle:
                         matrice[r][c] = num
                         numeri_usati.add(num)
                         break
-        # Ordinamento colonne
         for c in range(9):
             col_nums = []
             row_indices = []
@@ -49,67 +45,40 @@ class GeneratoreCartelle:
 
     @staticmethod
     def genera_tombolone_completo():
-        """
-        Genera un set di 6 cartelle che contengono TUTTI i numeri da 1 a 90 
-        senza ripetizioni (Tombolone/Cartellone classico).
-        """
-        # 1. Creiamo una "mega griglia" da 18 righe (6 cartelle x 3 righe) x 9 colonne
+        """Genera un set di 6 cartelle con TUTTI i numeri da 1 a 90"""
         mega_grid = [[0] * 9 for _ in range(18)]
-        
-        # 2. Riempiamo le colonne con tutti i numeri 1-90
         range_colonne = [
-            list(range(1, 10)),   # Col 0: 1-9 (9 num)
-            list(range(10, 20)),  # Col 1: 10-19 (10 num)
-            list(range(20, 30)),
-            list(range(30, 40)),
-            list(range(40, 50)),
-            list(range(50, 60)),
-            list(range(60, 70)),
-            list(range(70, 80)),
-            list(range(80, 91))   # Col 8: 80-90 (11 num)
+            list(range(1, 10)), list(range(10, 20)), list(range(20, 30)),
+            list(range(30, 40)), list(range(40, 50)), list(range(50, 60)),
+            list(range(60, 70)), list(range(70, 80)), list(range(80, 91))
         ]
-
-        # Distribuzione iniziale dei numeri nelle colonne della mega griglia
         for c in range(9):
             numeri_col = range_colonne[c][:]
             random.shuffle(numeri_col)
-            # Riempiamo le prime N righe della colonna c
             for r in range(len(numeri_col)):
                 mega_grid[r][c] = numeri_col[r]
-            # Mescoliamo le righe della colonna per non avere i numeri tutti in alto
             col_values = [mega_grid[r][c] for r in range(18)]
             random.shuffle(col_values)
             for r in range(18):
                 mega_grid[r][c] = col_values[r]
 
-        # 3. Bilanciamento Righe: Ogni riga deve avere ESATTAMENTE 5 numeri
-        # Algoritmo di scambio: finché ci sono righe non valide, sposta numeri
         while True:
             row_counts = [sum(1 for x in row if x > 0) for row in mega_grid]
             if all(c == 5 for c in row_counts):
-                break # Tutte le righe sono perfette
-            
-            # Trova una riga con troppi numeri e una con pochi numeri
+                break 
             row_over = next(i for i, c in enumerate(row_counts) if c > 5)
             row_under = next(i for i, c in enumerate(row_counts) if c < 5)
-            
-            # Trova una colonna dove row_over ha un numero e row_under ha 0
-            # e scambia il numero
             for c in range(9):
                 if mega_grid[row_over][c] > 0 and mega_grid[row_under][c] == 0:
                     mega_grid[row_under][c] = mega_grid[row_over][c]
                     mega_grid[row_over][c] = 0
                     break
         
-        # 4. Ordinamento: Ordiniamo i numeri verticalmente all'interno di ogni cartella (3 righe)
         cartelle_finali = []
         for i in range(6):
             start_row = i * 3
             end_row = start_row + 3
-            # Estrai la sottomatrice
             sub_matrice = [r[:] for r in mega_grid[start_row:end_row]]
-            
-            # Ordina le colonne della sottomatrice
             for c in range(9):
                 nums = []
                 positions = []
@@ -120,48 +89,44 @@ class GeneratoreCartelle:
                 nums.sort()
                 for idx, r in enumerate(positions):
                     sub_matrice[r][c] = nums[idx]
-            
             cartelle_finali.append(sub_matrice)
-            
         return cartelle_finali
 
 # --- FUNZIONI DI SUPPORTO ---
-def autoplay_audio(text):
-    """Genera audio e lo riproduce automaticamente nel browser con trucco JS"""
+
+# *** NUOVA FUNZIONE AUDIO (JAVASCRIPT NATIVO) ***
+def speak_js(text):
+    """
+    Usa la sintesi vocale del browser (Web Speech API).
+    Questo bypassa i blocchi di autoplay di Chrome perché è JavaScript eseguito lato client.
+    """
     if not text: return
-    try:
-        sound_file = BytesIO()
-        tts = gTTS(text, lang='it')
-        tts.write_to_fp(sound_file)
-        
-        b64 = base64.b64encode(sound_file.getvalue()).decode()
-        
-        # Generiamo un ID univoco basato sul tempo per ingannare la cache del browser
-        # e forzare il ricaricamento del player
-        unique_id = f"audio_{int(time.time() * 1000)}"
-        
-        md = f"""
-            <audio id="{unique_id}" autoplay>
-                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-            </audio>
-            
-            <script>
-                (function() {{
-                    var audio = document.getElementById("{unique_id}");
-                    if (audio) {{
-                        audio.volume = 1.0;
-                        audio.play().catch(function(error) {{
-                            console.log("Autoplay bloccato dal browser: " + error);
-                        }});
-                    }}
-                }})();
-            </script>
-            """
-        # Usiamo st.empty() per creare un contenitore volatile che forza il refresh
-        st.empty().markdown(md, unsafe_allow_html=True)
-        
-    except Exception as e:
-        st.error(f"Errore audio: {e}")
+    
+    # Puliamo il testo per evitare problemi con le virgolette in JS
+    text_safe = text.replace("'", "\\'").replace('"', '\\"')
+    
+    # Lo script JavaScript che fa parlare il browser
+    js = f"""
+        <script>
+            // Funzione auto-eseguibile
+            (function() {{
+                // Interrompe eventuali audio precedenti
+                window.speechSynthesis.cancel();
+                
+                // Crea il messaggio
+                var msg = new SpeechSynthesisUtterance('{text_safe}');
+                msg.lang = 'it-IT'; // Imposta lingua italiana
+                msg.rate = 1.0;     // Velocità normale
+                msg.pitch = 1.0;    // Tono normale
+                
+                // Parla!
+                window.speechSynthesis.speak(msg);
+            }})();
+        </script>
+    """
+    # Components.html crea un iframe invisibile che esegue lo script
+    import streamlit.components.v1 as components
+    components.html(js, height=0, width=0)
 
 def get_smorfia_text(num):
     return SMORFIA.get(num, "...")
@@ -180,14 +145,13 @@ if 'numeri_tabellone' not in st.session_state:
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Tombola Web Ultimate", layout="wide", page_icon="🎄")
 
-# --- SIDEBAR: CONFIGURAZIONE GIOCATORI ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Configurazione")
     
     if not st.session_state.partita_iniziata:
         st.info("Configura i giocatori prima di iniziare.")
         
-        # Input dinamici FUORI dal form per refresh istantaneo
         n_giocatori = st.number_input("Numero Giocatori Umani", min_value=0, max_value=20, value=1)
         st.write("---")
 
@@ -202,8 +166,7 @@ with st.sidebar:
                 n_cart = col2.number_input(f"Cartelle", min_value=1, max_value=6, value=1, key=f"c_{i}")
                 dati_temp.append({'nome': nome, 'n_cartelle': n_cart})
             
-            if n_giocatori > 0:
-                st.markdown("---")
+            if n_giocatori > 0: st.markdown("---")
             
             st.write("Opzioni Banco:")
             banco_si = st.checkbox("Aggiungi TOMBOLONE (Copre tutti i 90 numeri)", value=True)
@@ -215,14 +178,10 @@ with st.sidebar:
                     st.error("Devi avere almeno un giocatore o attivare il Banco!")
                 else:
                     st.session_state.giocatori = []
-                    
-                    # 1. Aggiunta Banco (Usa il NUOVO generatore Tombolone)
                     if banco_si:
-                        # Qui chiamiamo la funzione speciale che genera 6 cartelle complementari
                         cartelle_banco = GeneratoreCartelle.genera_tombolone_completo()
                         st.session_state.giocatori.append({'nome': '🏦 TOMBOLONE', 'cartelle': cartelle_banco})
                     
-                    # 2. Aggiunta Giocatori Umani (Usa il generatore casuale standard)
                     for d in dati_temp:
                         cartelle = [GeneratoreCartelle.genera_matrice_3x9() for _ in range(d['n_cartelle'])]
                         st.session_state.giocatori.append({'nome': d['nome'], 'cartelle': cartelle})
@@ -263,6 +222,7 @@ else:
                 st.session_state.ultimo_numero = num
                 
                 smorfia = get_smorfia_text(num)
+                # Impostiamo il messaggio da dire
                 st.session_state.messaggio_audio = f"{num}. {smorfia}"
                 st.rerun()
         else:
@@ -279,9 +239,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
             
+            # --- ESECUZIONE AUDIO ---
             if st.session_state.messaggio_audio:
-                autoplay_audio(st.session_state.messaggio_audio)
-                st.session_state.messaggio_audio = ""
+                speak_js(st.session_state.messaggio_audio)
+                st.session_state.messaggio_audio = "" # Resetta per non ripeterlo
 
     with col_tabellone:
         st.subheader("Tabellone")
