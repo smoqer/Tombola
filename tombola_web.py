@@ -495,10 +495,36 @@ elif menu == "🎮 Entra in Stanza (Giocatore)":
             cols = st.columns(3)
             st.markdown("""
             <style>
-            .c-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; background: white; }
-            .c-cell { border: 1px solid #333; width: 11%; text-align: center; height: 30px; font-weight: bold; }
-            .c-hit { background-color: #2ecc71; color: white; }
-            .c-empty { background-color: #bdc3c7; }
+            .c-table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-bottom: 10px; 
+                background-color: #ffffff !important; /* Forza sfondo bianco */
+            }
+            .c-cell { 
+                border: 1px solid #333; 
+                width: 11%; 
+                text-align: center; 
+                height: 35px; /* Un po' più alte per il dito */
+                font-weight: bold; 
+                font-size: 18px; /* Numeri più grandi per mobile */
+                
+                /* COLORI FORZATI PER EVITARE BUG DARK MODE */
+                color: #000000 !important; 
+                background-color: #ffffff !important;
+            }
+            
+            /* Casella Vinta (Verde) */
+            .c-hit { 
+                background-color: #2ecc71 !important; 
+                color: #ffffff !important; 
+                border-color: #27ae60 !important;
+            }
+            
+            /* Casella Vuota (Grigia/Pattern) */
+            .c-empty { 
+                background-color: #bdc3c7 !important; 
+            }
             </style>
             """, unsafe_allow_html=True)
             
