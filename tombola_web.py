@@ -13,7 +13,7 @@ except ImportError:
 class GeneratoreCartelle:
     @staticmethod
     def genera_matrice_3x9():
-        """Genera una cartella singola casuale (per i giocatori)"""
+        """Genera una cartella singola casuale"""
         matrice = [[0] * 9 for _ in range(3)]
         numeri_usati = set()
         range_colonne = [
@@ -92,44 +92,81 @@ class GeneratoreCartelle:
             cartelle_finali.append(sub_matrice)
         return cartelle_finali
 
-# --- FUNZIONI DI SUPPORTO ---
-
-# *** NUOVA FUNZIONE AUDIO (JAVASCRIPT NATIVO) ***
+# --- FUNZIONI AUDIO (JS) ---
 def speak_js(text):
-    """
-    Usa la sintesi vocale del browser (Web Speech API).
-    Questo bypassa i blocchi di autoplay di Chrome perché è JavaScript eseguito lato client.
-    """
     if not text: return
-    
-    # Puliamo il testo per evitare problemi con le virgolette in JS
     text_safe = text.replace("'", "\\'").replace('"', '\\"')
-    
-    # Lo script JavaScript che fa parlare il browser
     js = f"""
         <script>
-            // Funzione auto-eseguibile
             (function() {{
-                // Interrompe eventuali audio precedenti
                 window.speechSynthesis.cancel();
-                
-                // Crea il messaggio
                 var msg = new SpeechSynthesisUtterance('{text_safe}');
-                msg.lang = 'it-IT'; // Imposta lingua italiana
-                msg.rate = 1.0;     // Velocità normale
-                msg.pitch = 1.0;    // Tono normale
-                
-                // Parla!
+                msg.lang = 'it-IT';
+                msg.rate = 1.0;
                 window.speechSynthesis.speak(msg);
             }})();
         </script>
     """
-    # Components.html crea un iframe invisibile che esegue lo script
     import streamlit.components.v1 as components
     components.html(js, height=0, width=0)
 
 def get_smorfia_text(num):
     return SMORFIA.get(num, "...")
+
+# --- FUNZIONE CONTROLLO VINCITE ---
+def controlla_vincite():
+    """Controlla se qualcuno ha raggiunto l'obiettivo corrente (Ambo, Terno, ecc.)"""
+    target = st.session_state.obbiettivo_corrente # 2=Ambo, 3=Terno...
+    estratti = set(st.session_state.numeri_estratti)
+    
+    nomi_premi = {2: "AMBO", 3: "TERNO", 4: "QUATERNA", 5: "CINQUINA", 15: "TOMBOLA"}
+    nome_premio_attuale = nomi_premi.get(target, "TOMBOLA")
+    
+    vincitori_round = []
+    
+    for giocatore in st.session_state.giocatori:
+        nome = giocatore['nome']
+        for cartella in giocatore['cartelle']:
+            
+            # Controllo righe (Ambo, Terno, Quaterna, Cinquina)
+            punti_cartella_totali = 0
+            win_found = False
+            
+            for riga in cartella:
+                # Conta quanti numeri della riga sono stati estratti
+                numeri_riga = [n for n in riga if n > 0]
+                punti_riga = sum(1 for n in numeri_riga if n in estratti)
+                punti_cartella_totali += punti_riga
+                
+                # Se giochiamo per Cinquina o meno
+                if target <= 5:
+                    if punti_riga >= target:
+                        win_found = True
+            
+            # Controllo Tombola
+            if target == 15 and punti_cartella_totali == 15:
+                win_found = True
+                
+            if win_found and nome not in vincitori_round:
+                vincitori_round.append(nome)
+
+    if vincitori_round:
+        # Abbiamo dei vincitori!
+        testo_vincitori = ", ".join(vincitori_round)
+        msg_win = f"Attenzione! {nome_premio_attuale} per {testo_vincitori}!"
+        
+        # Aggiorniamo messaggio audio e toast
+        st.session_state.messaggio_audio += f" ... {msg_win}"
+        st.toast(f"🏆 {msg_win}", icon="🎉")
+        
+        # Aggiorniamo lo stato del gioco per il prossimo premio
+        if target < 5:
+            st.session_state.obbiettivo_corrente += 1
+        elif target == 5:
+            st.session_state.obbiettivo_corrente = 15 # Passa a Tombola
+        else:
+            st.session_state.messaggio_audio += " ... Gioco Finito!"
+            st.balloons()
 
 # --- INIZIALIZZAZIONE SESSIONE ---
 if 'numeri_tabellone' not in st.session_state:
@@ -141,6 +178,8 @@ if 'numeri_tabellone' not in st.session_state:
     st.session_state.messaggio_audio = ""
     st.session_state.giocatori = [] 
     st.session_state.partita_iniziata = False
+    # NUOVO STATO PER VINCITE
+    st.session_state.obbiettivo_corrente = 2 # Si parte dall'AMBO (2)
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Tombola Web Ultimate", layout="wide", page_icon="🎄")
@@ -157,7 +196,6 @@ with st.sidebar:
 
         with st.form("setup_form"):
             st.write("Dettagli Giocatori:")
-            
             dati_temp = []
             for i in range(n_giocatori):
                 st.markdown(f"**Giocatore {i+1}**")
@@ -167,8 +205,6 @@ with st.sidebar:
                 dati_temp.append({'nome': nome, 'n_cartelle': n_cart})
             
             if n_giocatori > 0: st.markdown("---")
-            
-            st.write("Opzioni Banco:")
             banco_si = st.checkbox("Aggiungi TOMBOLONE (Copre tutti i 90 numeri)", value=True)
             
             submitted = st.form_submit_button("✅ INIZIA PARTITA", type="primary")
@@ -187,9 +223,16 @@ with st.sidebar:
                         st.session_state.giocatori.append({'nome': d['nome'], 'cartelle': cartelle})
                     
                     st.session_state.partita_iniziata = True
+                    st.session_state.obbiettivo_corrente = 2 # Reset vincita
                     st.rerun()
     else:
-        st.success("Partita in corso!")
+        # Sidebar durante il gioco
+        nomi_premi = {2: "AMBO", 3: "TERNO", 4: "QUATERNA", 5: "CINQUINA", 15: "TOMBOLA"}
+        curr = st.session_state.obbiettivo_corrente
+        txt_premio = nomi_premi.get(curr, "GIOCO FINITO")
+        
+        st.success(f"🏆 Si gioca per: **{txt_premio}**")
+        
         if st.button("❌ Resetta Tutto"):
             st.session_state.clear()
             st.rerun()
@@ -222,8 +265,13 @@ else:
                 st.session_state.ultimo_numero = num
                 
                 smorfia = get_smorfia_text(num)
-                # Impostiamo il messaggio da dire
-                st.session_state.messaggio_audio = f"{num}. {smorfia}"
+                # Messaggio base
+                st.session_state.messaggio_audio = f"{num}. {smorfia}."
+                
+                # --- VERIFICA VINCITE ---
+                controlla_vincite()
+                # ------------------------
+                
                 st.rerun()
         else:
             st.success("Tabellone Completato!")
@@ -239,10 +287,16 @@ else:
             </div>
             """, unsafe_allow_html=True)
             
-            # --- ESECUZIONE AUDIO ---
+            # Mostra cosa stiamo cercando
+            nomi_premi = {2: "AMBO", 3: "TERNO", 4: "QUATERNA", 5: "CINQUINA", 15: "TOMBOLA"}
+            curr = st.session_state.obbiettivo_corrente
+            lbl = nomi_premi.get(curr, "GIOCO FINITO")
+            if curr <= 15:
+                st.info(f"Prossimo obiettivo: **{lbl}**")
+            
             if st.session_state.messaggio_audio:
                 speak_js(st.session_state.messaggio_audio)
-                st.session_state.messaggio_audio = "" # Resetta per non ripeterlo
+                st.session_state.messaggio_audio = ""
 
     with col_tabellone:
         st.subheader("Tabellone")
