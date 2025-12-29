@@ -1,0 +1,10 @@
+# Ignora le password di Streamlit
+.streamlit/secrets.toml
+
+# Ignora i file temporanei di Python (cartelle spazzatura)
+__pycache__/
+*.pyc
+
+# Ignora file di sistema o database locali se presenti
+.DS_Store
+tombola_db.json
