@@ -289,4 +289,105 @@ elif menu == "🎮 Entra in Stanza":
             st.divider()
 
         # LOGICA GIOCO
-        estratti = dati["numeri
+        estratti = dati["numeri_estratti"]
+        ultimo = dati["ultimo_numero"]
+        msg_audio = dati.get("messaggio_audio", "")
+        msg_toast = dati.get("messaggio_toast", "")
+
+        c1, c2 = st.columns([3,1])
+        c1.markdown(f"## Stanza: **{stanza}** | Utente: *{mio_nome}*")
+        if c2.button("🚪 Esci"): st.session_state.clear(); st.rerun()
+
+        if msg_toast:
+            if 'last_toast' not in st.session_state or st.session_state.last_toast != msg_toast:
+                st.toast(msg_toast, icon="🎉"); st.session_state.last_toast = msg_toast
+                if dati.get("gioco_finito"): st.balloons()
+
+        # --- PANNELLO ADMIN ---
+        if ruolo == "ADMIN":
+            st.info(f"👮 PANNELLO BANCO - Si gioca per: {dati.get('obbiettivo_corrente', '?')}")
+            col_auto, col_man = st.columns(2)
+            
+            def estrai():
+                """Ritorna (successo, vincita_flag)"""
+                if len(dati["numeri_tabellone"]) > 0 and not dati.get("gioco_finito"):
+                    n = dati["numeri_tabellone"].pop(0)
+                    dati["numeri_estratti"].append(n)
+                    dati["ultimo_numero"] = n
+                    dati["messaggio_audio"] = f"{n}. {get_smorfia_text(n)}."
+                    dati["messaggio_toast"] = ""
+                    # Controlla vincite e recupera flag se c'è stata vincita
+                    d_agg, win_flag = controlla_vincite(dati)
+                    save_stanza_db(stanza, d_agg)
+                    return True, win_flag
+                return False, False
+
+            with col_auto:
+                # Usiamo una key per il toggle così possiamo modificarla da codice
+                usa_auto = st.toggle("Auto-Play", key="auto_play_toggle")
+                tempo = st.slider("Secondi", 3, 20, 6)
+                p_bar = st.progress(0); stat = st.empty()
+            
+            with col_man:
+                if st.button("🎱 ESTRAI MANUALE", type="primary", disabled=usa_auto): 
+                    succ, win = estrai()
+                    if succ: st.rerun()
+
+            # --- LOGICA AUTO PLAY ---
+            if usa_auto and not dati.get("gioco_finito"):
+                if len(dati["numeri_tabellone"]) > 0:
+                    stat.write(f"⏳ Estrazione in {tempo}s...")
+                    
+                    # Eseguiamo estrazione
+                    esito, vincita_rilevata = estrai()
+                    
+                    if esito:
+                        # MODIFICA 2: Se c'è vincita, disattiva Auto-Play
+                        if vincita_rilevata:
+                            st.session_state.auto_play_toggle = False # Spegne interruttore graficamente
+                            st.rerun() # Ricarica pagina per mostrare vincita e stop
+                        else:
+                            # Se non c'è vincita, attendi e ricarica
+                            for i in range(100): 
+                                time.sleep(tempo/100)
+                                p_bar.progress(i+1)
+                            st.rerun()
+                else: 
+                    st.warning("Fine numeri.")
+
+        # AUDIO E VISUALIZZAZIONE
+        if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
+        if msg_audio and msg_audio != st.session_state.last_audio_msg:
+            speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
+
+        if ultimo:
+            st.markdown(f"""
+            <div style="text-align: center; background-color: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <span style="font-size: 80px; font-weight: bold; color: #e74c3c;">{ultimo}</span><br>
+                <span style="font-size: 24px; font-style: italic;">{get_smorfia_text(ultimo)}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            nomi_p = {2:"AMBO", 3:"TERNO", 4:"QUATERNA", 5:"CINQUINA", 15:"TOMBOLA"}
+            st.info(f"Prossimo Obiettivo: **{nomi_p.get(dati.get('obbiettivo_corrente', 2), 'FINE')}**")
+        else: st.info("In attesa inizio...")
+
+        with st.expander("Tabellone", expanded=True):
+            st.markdown("""<style>.g{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}.c{border:1px solid #ccc;text-align:center;padding:5px;font-size:12px;background:#eee}.Ex{background:#e74c3c;color:white;font-weight:bold}</style>""", unsafe_allow_html=True)
+            h = '<div class="g">'
+            for i in range(1, 91): h+=f'<div class="c {"Ex" if i in estratti else ""}">{i}</div>'
+            st.markdown(h+'</div>', unsafe_allow_html=True)
+
+        if ruolo == "PLAYER":
+            st.divider(); st.subheader("Le Tue Cartelle")
+            mie = dati["giocatori"].get(mio_nome, [])
+            cols = st.columns(3)
+            st.markdown("""<style>.ct{width:100%;border-collapse:collapse;margin-bottom:10px;background:white}.cc{border:1px solid #333;width:11%;text-align:center;height:30px;font-weight:bold}.ch{background-color:#2ecc71;color:white}.ce{background-color:#bdc3c7}</style>""", unsafe_allow_html=True)
+            for idx, m in enumerate(mie):
+                with cols[idx%3]:
+                    h = f"<b>C. {idx+1}</b><table class='ct'>"
+                    for r in m:
+                        h+="<tr>"
+                        for v in r: h+=f"<td class='cc {'ce' if v==0 else ('ch' if v in estratti else '')}'>{v if v!=0 else ''}</td>"
+                        h+="</tr>"
+                    st.markdown(h+"</table>", unsafe_allow_html=True)
+            time.sleep(3); st.rerun()
