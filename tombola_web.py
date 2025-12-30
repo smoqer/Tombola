@@ -39,7 +39,8 @@ st.markdown("""
         }
         .money-val { font-size: 20px; font-weight: bold; color: #d35400; }
         .player-row { padding: 5px; border-bottom: 1px solid #ddd; font-size: 14px; }
-        .winner-badge { color: #e1b12c; font-weight: bold; }
+        .winner-badge { color: #27ae60; font-weight: bold; background: #eafaf1; padding: 2px 5px; border-radius: 4px; }
+        .prize-row { font-size: 14px; margin-bottom: 3px; }
         
         /* Stile Lobby */
         .lobby-box {
@@ -279,11 +280,9 @@ elif menu == "🎮 Entra in Stanza":
                         st.rerun()
                     else: st.error("Password errata.")
                 else:
-                    # GESTIONE LOBBY PLAYER
                     if inp_nome:
                         gia_presente = inp_nome in d["giocatori"]
                         stato_partita = d.get("stato", "LOBBY")
-                        
                         if not gia_presente and stato_partita != "LOBBY":
                             st.error("🚫 Concerto già iniziato! La biglietteria è chiusa.")
                         elif gia_presente:
@@ -304,7 +303,7 @@ elif menu == "🎮 Entra in Stanza":
                                 st.rerun()
                     else: st.error("Inserisci nome.")
     else:
-        # --- PARTITA / LOBBY IN CORSO ---
+        # --- PARTITA / LOBBY ---
         stanza = st.session_state.stanza_corrente
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
@@ -320,7 +319,7 @@ elif menu == "🎮 Entra in Stanza":
         stato_partita = dati.get("stato", "LOBBY")
         tot_c, montepremi, vals = get_info_economiche(dati)
         
-        # --- SIDEBAR COMUNE ---
+        # --- SIDEBAR COMUNE (SEMPRE VISIBILE) ---
         with st.sidebar:
             st.divider()
             st.markdown(f"""
@@ -331,8 +330,22 @@ elif menu == "🎮 Entra in Stanza":
             </div>
             """, unsafe_allow_html=True)
             
+            # LISTA VALORE PREMI
+            st.markdown("#### 🏆 Premi in Palio")
+            nomi_p_short = {2:"AMBO", 3:"TERNO", 4:"QUAT.", 5:"CINQ.", 15:"TOMBOLA"}
+            curr_obj = dati.get("obbiettivo_corrente", 2)
+            
+            for k, val_p in vals.items():
+                lbl = nomi_p_short.get(k, str(k))
+                marker = "👉" if k == curr_obj and stato_partita == "IN_CORSO" else "-"
+                style_p = "font-weight:bold; color:#d35400;" if k == curr_obj and stato_partita == "IN_CORSO" else ""
+                st.markdown(f"<div class='prize-row'>{marker} <span style='{style_p}'>{lbl}: {val_p}</span></div>", unsafe_allow_html=True)
+            
+            st.divider()
+            
+            # CLASSIFICA GIOCATORI
             num_p = len(dati["giocatori"])
-            st.markdown(f"### 👥 {num_p} Presenti")
+            st.markdown(f"### 👥 {num_p} Partecipanti")
             leaderboard = dati.get("classifica_vincite", {})
             lista_g = sorted(list(dati["giocatori"].keys()), key=lambda x: leaderboard.get(x, 0), reverse=True)
             
@@ -348,7 +361,7 @@ elif menu == "🎮 Entra in Stanza":
             st.markdown("</div>", unsafe_allow_html=True)
             st.divider()
 
-        # --- HEADER ---
+        # --- HEADER PRINCIPALE ---
         c1, c2 = st.columns([3,1])
         c1.markdown(f"## Stanza: **{stanza}** | Utente: *{mio_nome}*")
         
@@ -384,7 +397,6 @@ elif menu == "🎮 Entra in Stanza":
                 time.sleep(3)
                 st.rerun()
             
-            # Mostra comunque le cartelle in lobby per i player
             if ruolo == "PLAYER":
                 st.divider()
                 st.subheader("Le Tue Cartelle (Anteprima)")
@@ -402,7 +414,6 @@ elif menu == "🎮 Entra in Stanza":
 
         # --- GESTIONE STATO: IN_CORSO ---
         else:
-            # Recupera variabili gioco
             curr_obj = dati.get("obbiettivo_corrente", 2)
             msg_toast = dati.get("messaggio_toast", "")
             msg_audio = dati.get("messaggio_audio", "")
@@ -435,13 +446,10 @@ elif menu == "🎮 Entra in Stanza":
                         return True, win
                     return False, False
 
-                # --- FIX ST.TOGGLE SESSION STATE ERROR ---
-                # Usiamo una variabile di stato separata per controllare l'Auto-Play
                 if "stato_autoplay" not in st.session_state:
                     st.session_state.stato_autoplay = False
 
                 def callback_autoplay():
-                    # Sincronizza lo stato con l'interruttore
                     st.session_state.stato_autoplay = st.session_state.toggle_widget_key
 
                 with col_auto:
@@ -464,7 +472,6 @@ elif menu == "🎮 Entra in Stanza":
                         esito, vinta = estrai()
                         if esito:
                             if vinta: 
-                                # Disattiva Auto-Play modificando la variabile di stato, NON il widget
                                 st.session_state.stato_autoplay = False
                                 st.rerun()
                             else:
@@ -472,7 +479,6 @@ elif menu == "🎮 Entra in Stanza":
                                 st.rerun()
                     else: st.warning("Fine numeri.")
 
-            # AUDIO E VISUAL
             if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
             if msg_audio and msg_audio != st.session_state.last_audio_msg:
                 speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
