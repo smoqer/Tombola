@@ -7,37 +7,45 @@ from datetime import datetime
 import mysql.connector
 from mysql.connector import Error
 
+# --- COSTANTI ECONOMICHE ---
+COSTO_CARTELLA = 5
+QUOTE = {
+    2: 0.12,  # Ambo 8%
+    3: 0.18,  # Terno 13%
+    4: 0.20,  # Quaterna 18%
+    5: 0.20,  # Cinquina 25%
+    15: 0.30  # Tombola 36%
+}
+
 # --- CONFIGURAZIONE PAGINA E STILE ROCK ---
 st.set_page_config(page_title="TombolaRock", layout="wide", page_icon="🤟")
 
-# CSS: Fix per Android Dark Mode + Stile Rock + Regolamento
 st.markdown("""
     <style>
-        /* Base chiara per compatibilità mobile */
         .stApp { background-color: #ffffff; color: #000000; }
         input, .stTextInput > div > div > input { color: #000000 !important; background-color: #ffffff !important; }
         section[data-testid="stSidebar"] { background-color: #f0f2f6; }
         p, h1, h2, h3, h4, h5, h6, li, span, div { color: #2c3e50; }
         .c-cell, .cell-tab { color: #000000; }
         
-        /* STILE ROCK */
         .rock-title { 
-            color: #d63031; 
-            font-weight: 900; 
-            text-align: center; 
-            text-transform: uppercase; 
-            font-family: 'Arial Black', sans-serif;
-            text-shadow: 2px 2px 0px #000000;
+            color: #d63031; font-weight: 900; text-align: center; text-transform: uppercase; 
+            font-family: 'Arial Black', sans-serif; text-shadow: 2px 2px 0px #000000;
         }
         .rule-box {
-            background-color: #ecf0f1;
-            padding: 20px;
-            border-radius: 10px;
-            border-left: 5px solid #d63031;
-            margin-bottom: 10px;
+            background-color: #ecf0f1; padding: 20px; border-radius: 10px; 
+            border-left: 5px solid #d63031; margin-bottom: 10px;
         }
         .win-title { color: #2ecc71; font-weight: bold; }
-        .stAlert { color: #000000; }
+        .money-box {
+            background-color: #ffeaa7; border: 2px solid #fdcb6e; 
+            padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px;
+        }
+        .money-val { font-size: 20px; font-weight: bold; color: #d35400; }
+        .player-row {
+            padding: 5px; border-bottom: 1px solid #ddd; font-size: 14px;
+        }
+        .winner-badge { color: #e1b12c; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -46,7 +54,6 @@ def get_connection():
     if "mysql" not in st.secrets:
         st.error("Manca la configurazione [mysql] in .streamlit/secrets.toml")
         st.stop()
-        
     return mysql.connector.connect(
         host=st.secrets["mysql"]["host"],
         user=st.secrets["mysql"]["user"],
@@ -63,16 +70,13 @@ def load_stanza_db(nome_stanza):
         query = "SELECT dati_partita FROM stanze_tombola WHERE nome_stanza = %s"
         cursor.execute(query, (nome_stanza,))
         result = cursor.fetchone()
-        
-        if result:
-            return json.loads(result['dati_partita'])
+        if result: return json.loads(result['dati_partita'])
         return None
     except Error as e:
         st.error(f"Errore connessione DB: {e}")
         return None
     finally:
-        if conn and conn.is_connected():
-            conn.close()
+        if conn and conn.is_connected(): conn.close()
 
 def save_stanza_db(nome_stanza, dati_dizionario):
     conn = None
@@ -90,34 +94,19 @@ def save_stanza_db(nome_stanza, dati_dizionario):
     except Error as e:
         st.error(f"Errore salvataggio DB: {e}")
     finally:
-        if conn and conn.is_connected():
-            conn.close()
+        if conn and conn.is_connected(): conn.close()
 
 # --- IMPORT SMORFIA ---
-try:
-    from smorfia_dati import SMORFIA
-except ImportError:
-    SMORFIA = {}
+try: from smorfia_dati import SMORFIA
+except ImportError: SMORFIA = {}
+def get_smorfia_text(num): return SMORFIA.get(num, "...")
 
-def get_smorfia_text(num):
-    return SMORFIA.get(num, "...")
-
-# --- FUNZIONI AUDIO (JS) ---
+# --- AUDIO JS ---
 def speak_js(text):
     if not text: return
     text_safe = text.replace("'", "\\'").replace('"', '\\"')
     u_id = int(time.time() * 1000)
-    js = f"""
-        <div style="display:none" id="audio_{u_id}"></div>
-        <script>
-            (function() {{
-                window.speechSynthesis.cancel();
-                var msg = new SpeechSynthesisUtterance('{text_safe}');
-                msg.lang = 'it-IT';
-                window.speechSynthesis.speak(msg);
-            }})();
-        </script>
-    """
+    js = f"""<div style="display:none" id="audio_{u_id}"></div><script>(function(){{window.speechSynthesis.cancel();var msg=new SpeechSynthesisUtterance('{text_safe}');msg.lang='it-IT';window.speechSynthesis.speak(msg);}})();</script>"""
     st.components.v1.html(js, height=0, width=0)
 
 # --- GENERATORE CARTELLE ---
@@ -149,19 +138,34 @@ class GeneratoreCartelle:
                 matrice[r_idx][c] = col_nums[i]
         return matrice
 
+# --- CALCOLO MONTEPREMI ---
+def get_info_economiche(dati_stanza):
+    tot_cartelle = sum(len(c) for c in dati_stanza["giocatori"].values())
+    montepremi = tot_cartelle * COSTO_CARTELLA
+    premi_valore = {
+        2: round(montepremi * QUOTE[2]),
+        3: round(montepremi * QUOTE[3]),
+        4: round(montepremi * QUOTE[4]),
+        5: round(montepremi * QUOTE[5]),
+        15: round(montepremi * QUOTE[15])
+    }
+    return tot_cartelle, montepremi, premi_valore
+
 # --- CONTROLLO VINCITE ---
 def controlla_vincite(dati_stanza):
-    """
-    Ritorna una tupla: (dati_aggiornati, vincita_avvenuta_bool)
-    """
     target = dati_stanza.get("obbiettivo_corrente", 2)
     estratti = set(dati_stanza["numeri_estratti"])
     nomi_premi = {2: "AMBO", 3: "TERNO", 4: "QUATERNA", 5: "CINQUINA", 15: "TOMBOLA"}
     nome_premio = nomi_premi.get(target, "TOMBOLA")
-    vincitori_round = []
     
+    # Recuperiamo il valore del premio corrente
+    _, _, valori_premi = get_info_economiche(dati_stanza)
+    valore_totale_premio = valori_premi.get(target, 0)
+    
+    vincitori_round = []
     nuova_vincita_trovata = False
 
+    # Verifica vincitori
     for nome_g, cartelle in dati_stanza["giocatori"].items():
         for cartella in cartelle:
             punti_tot = 0
@@ -174,19 +178,28 @@ def controlla_vincite(dati_stanza):
             if win and nome_g not in vincitori_round: vincitori_round.append(nome_g)
 
     if vincitori_round:
+        # Calcolo vincita pro-capite (split pot)
+        quota_cadauno = int(valore_totale_premio / len(vincitori_round))
+        
+        # AGGIORNAMENTO DB VINCITE
+        if "classifica_vincite" not in dati_stanza:
+            dati_stanza["classifica_vincite"] = {}
+        
+        for vincitore in vincitori_round:
+            vecchio_saldo = dati_stanza["classifica_vincite"].get(vincitore, 0)
+            dati_stanza["classifica_vincite"][vincitore] = vecchio_saldo + quota_cadauno
+
+        # Notifiche
         testo = ", ".join(vincitori_round)
-        msg = f"Attenzione! {nome_premio} per {testo}!"
+        msg = f"Attenzione! {nome_premio} ({valore_totale_premio} totali) per {testo}!"
         
         if msg not in dati_stanza.get("messaggio_audio", ""):
             dati_stanza["messaggio_audio"] += f" ... {msg}"
-            dati_stanza["messaggio_toast"] = f"🏆 {msg}"
+            dati_stanza["messaggio_toast"] = f"🏆 {msg} (+{quota_cadauno} cad.)"
             nuova_vincita_trovata = True
         
-        # Logica avanzamento premio
-        if target < 5: 
-            dati_stanza["obbiettivo_corrente"] += 1
-        elif target == 5: 
-            dati_stanza["obbiettivo_corrente"] = 15
+        if target < 5: dati_stanza["obbiettivo_corrente"] += 1
+        elif target == 5: dati_stanza["obbiettivo_corrente"] = 15
         else: 
             dati_stanza["messaggio_audio"] += " ... Gioco Finito!"
             dati_stanza["gioco_finito"] = True
@@ -196,69 +209,50 @@ def controlla_vincite(dati_stanza):
 
 # --- INTERFACCIA ---
 st.markdown("<h1 class='rock-title'>🤟 TOMBOLA ROCK 🤟</h1>", unsafe_allow_html=True)
-
 menu = st.sidebar.radio("Menu", ["🏠 Home", "🆕 Crea Stanza (Admin)", "🎮 Entra in Stanza"])
 
-# --- HOMEPAGE CON REGOLAMENTO ---
 if menu == "🏠 Home":
     st.markdown("### Benvenuti alla Tombola più Rock del Web! 🎸")
-    
-    st.markdown("""
+    st.markdown(f"""
     <div class='rule-box'>
-        <h3>📜 REGOLAMENTO DI GIOCO</h3>
-        <p>Le regole sono quelle classiche della Tombola Napoletana. Si vince raggiungendo le combinazioni seguenti su una singola riga:</p>
+        <h3>📜 REGOLAMENTO E PREMI</h3>
+        <p>Costo Cartella: <b>{COSTO_CARTELLA} gettoni</b>.</p>
+        <p>Il montepremi viene suddiviso così:</p>
         <ul>
-            <li><span class='win-title'>AMBO (2)</span>: Due numeri estratti sulla stessa riga.</li>
-            <li><span class='win-title'>TERNO (3)</span>: Tre numeri estratti sulla stessa riga.</li>
-            <li><span class='win-title'>QUATERNA (4)</span>: Quattro numeri estratti sulla stessa riga.</li>
-            <li><span class='win-title'>CINQUINA (5)</span>: Cinque numeri estratti sulla stessa riga.</li>
+            <li><span class='win-title'>AMBO</span>: 12%</li>
+            <li><span class='win-title'>TERNO</span>: 18%</li>
+            <li><span class='win-title'>QUATERNA</span>: 20%</li>
+            <li><span class='win-title'>CINQUINA</span>: 20%</li>
+            <li><span class='win-title'>🏆 TOMBOLA</span>: 30%</li>
         </ul>
-        <hr>
-        <p>Il premio finale è:</p>
-        <ul>
-            <li><span class='win-title'>🏆 TOMBOLA (15)</span>: Tutti i numeri della cartella estratti!</li>
-        </ul>
-    </div>
-    
-    <div class='rule-box'>
-        <h3>🕹️ COME PARTECIPARE</h3>
-        <ol>
-            <li><b>L'Admin</b> crea la stanza (il Banco non gioca, gestisce solo l'estrazione).</li>
-            <li><b>I Giocatori</b> entrano inserendo il nome della stanza e il proprio nome.</li>
-            <li>Il sistema controlla <b>automaticamente</b> le vincite e ferma il gioco per festeggiare!</li>
-        </ol>
+        <p><i>In caso di più vincitori contemporanei, il premio viene diviso equamente.</i></p>
     </div>
     """, unsafe_allow_html=True)
 
-# --- CREAZIONE STANZA (ADMIN) ---
 elif menu == "🆕 Crea Stanza (Admin)":
     st.header("Impostazioni Banco (Admin)")
-    st.info("L'Admin gestisce l'estrazione ma non possiede cartelle di gioco.")
-    
     with st.form("crea"):
         nome = st.text_input("Nome Stanza", max_chars=15).upper().strip()
         pwd = st.text_input("Password Admin", type="password")
-        
         if st.form_submit_button("Crea Stanza 🎸"):
             if not nome or not pwd: st.error("Dati mancanti.")
             else:
                 exist = load_stanza_db(nome)
-                if exist: st.warning("Attenzione: Stanza esistente resettata.")
+                if exist: st.warning("Reset stanza eseguito.")
                 numeri = list(range(1, 91)); random.shuffle(numeri)
                 dati = {
                     "admin_pwd": pwd, "created_at": str(datetime.now()),
                     "numeri_tabellone": numeri, "numeri_estratti": [],
                     "ultimo_numero": None, "messaggio_audio": "", "messaggio_toast": "",
-                    "giocatori": {}, "obbiettivo_corrente": 2, "gioco_finito": False
+                    "giocatori": {}, "classifica_vincite": {}, # Tracking Soldi
+                    "obbiettivo_corrente": 2, "gioco_finito": False
                 }
                 save_stanza_db(nome, dati)
-                
                 st.session_state.ruolo = "ADMIN"
                 st.session_state.stanza_corrente = nome
                 st.session_state.nome_giocatore = "ADMIN"
                 st.rerun()
 
-# --- ACCESSO GIOCATORI ---
 elif menu == "🎮 Entra in Stanza":
     if 'stanza_corrente' not in st.session_state:
         c1, c2 = st.columns(2)
@@ -267,7 +261,9 @@ elif menu == "🎮 Entra in Stanza":
         
         is_admin = st.checkbox("Sono l'Admin (Banco)")
         pwd_in = st.text_input("Password", type="password") if is_admin else ""
-        n_cart = st.slider("Cartelle", 1, 6, 1)
+        n_cart = st.slider(f"Cartelle ({COSTO_CARTELLA} gettoni l'una)", 1, 6, 1)
+        costo_tot = n_cart * COSTO_CARTELLA
+        st.info(f"💰 Costo ingresso: **{costo_tot} gettoni**")
         
         if st.button("ENTRA 🤟"):
             d = load_stanza_db(inp_stanza)
@@ -282,13 +278,16 @@ elif menu == "🎮 Entra in Stanza":
                     else: st.error("Password errata.")
                 else:
                     if inp_nome:
-                        # Check Nomi Univoci
                         if inp_nome in d["giocatori"]:
-                            st.error(f"Il nome '{inp_nome}' è già preso! Usa un nickname Rock diverso.")
+                            st.error("Nome già in uso.")
                         else:
-                            if len(d["giocatori"]) >= 30: st.error("Stanza piena.")
+                            if len(d["giocatori"]) >= 40: st.error("Stanza piena.")
                             else:
                                 d["giocatori"][inp_nome] = [GeneratoreCartelle.genera_matrice_3x9() for _ in range(n_cart)]
+                                # Inizializza vincite a 0 se non esiste
+                                if "classifica_vincite" not in d: d["classifica_vincite"] = {}
+                                d["classifica_vincite"][inp_nome] = 0
+                                
                                 save_stanza_db(inp_stanza, d)
                                 st.session_state.ruolo = "PLAYER"
                                 st.session_state.stanza_corrente = inp_stanza
@@ -301,24 +300,63 @@ elif menu == "🎮 Entra in Stanza":
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
         dati = load_stanza_db(stanza)
-        
-        if not dati:
-            st.error("Errore connessione."); st.stop()
+        if not dati: st.error("Errore."); st.stop()
 
-        # LISTA PARTECIPANTI (SIDEBAR)
+        tot_c, montepremi, vals = get_info_economiche(dati)
+        curr_obj = dati.get("obbiettivo_corrente", 2)
+        
+        # --- SIDEBAR AVANZATA ---
         with st.sidebar:
             st.divider()
-            lista_giocatori = list(dati["giocatori"].keys())
-            st.markdown(f"### 🎸 Partecipanti ({len(lista_giocatori)})")
-            lista_ordinata = sorted(lista_giocatori)
-            for g in lista_ordinata:
-                n_c = len(dati["giocatori"][g])
-                icona = "🤟" # Icona Rock
-                if g == mio_nome: st.markdown(f"👉 **{icona} {g}** ({n_c})")
-                else: st.markdown(f"{icona} {g} ({n_c})")
+            
+            # Box Montepremi
+            st.markdown(f"""
+            <div class='money-box'>
+                <div>MONTEPREMI</div>
+                <div class='money-val'>💰 {montepremi}</div>
+                <div style='font-size:12px; color:#555'>Cartelle: {tot_c}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Partecipanti e Leaderboard
+            num_partecipanti = len(dati["giocatori"])
+            st.markdown(f"### 👥 {num_partecipanti} Presenti")
+            
+            # Recupera dizionario vincite (compatibilità con vecchie stanze)
+            leaderboard = dati.get("classifica_vincite", {})
+            
+            # Ordina giocatori: Chi ha vinto di più in alto!
+            lista_g = sorted(list(dati["giocatori"].keys()), 
+                             key=lambda x: leaderboard.get(x, 0), 
+                             reverse=True)
+            
+            st.markdown("<div style='max-height: 400px; overflow-y: auto;'>", unsafe_allow_html=True)
+            for g in lista_g:
+                nc = len(dati["giocatori"][g])
+                vinto = leaderboard.get(g, 0)
+                
+                # Formattazione riga
+                icona = "👤"
+                style_nome = ""
+                badge = ""
+                
+                if vinto > 0:
+                    badge = f" <span class='winner-badge'>+💰{vinto}</span>"
+                    icona = "🏆"
+                
+                if g == mio_nome:
+                    style_nome = "font-weight: bold; color: #d63031;"
+                    icona = "👉"
+                
+                st.markdown(f"""
+                <div class='player-row'>
+                    {icona} <span style='{style_nome}'>{g}</span> ({nc}) {badge}
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
             st.divider()
 
-        # LOGICA GIOCO E NOTIFICHE
+        # LOGICA GIOCO
         estratti = dati["numeri_estratti"]
         ultimo = dati["ultimo_numero"]
         msg_audio = dati.get("messaggio_audio", "")
@@ -333,59 +371,50 @@ elif menu == "🎮 Entra in Stanza":
                 st.toast(msg_toast, icon="🎉"); st.session_state.last_toast = msg_toast
                 if dati.get("gioco_finito"): st.balloons()
 
-        # --- PANNELLO ADMIN ---
         if ruolo == "ADMIN":
-            st.info(f"👮 PANNELLO BANCO - Si gioca per: {dati.get('obbiettivo_corrente', '?')}")
-            col_auto, col_man = st.columns(2)
+            val_corr = vals.get(curr_obj, 0)
+            nomi_p = {2:"AMBO", 3:"TERNO", 4:"QUATERNA", 5:"CINQUINA", 15:"TOMBOLA"}
+            txt_obj = nomi_p.get(curr_obj, "FINE")
             
+            st.info(f"👮 PANNELLO BANCO - Si gioca per: **{txt_obj}** (Valore: {val_corr} gettoni)")
+            
+            col_auto, col_man = st.columns(2)
             def estrai():
-                """Ritorna (successo, vincita_flag)"""
                 if len(dati["numeri_tabellone"]) > 0 and not dati.get("gioco_finito"):
                     n = dati["numeri_tabellone"].pop(0)
                     dati["numeri_estratti"].append(n)
                     dati["ultimo_numero"] = n
                     dati["messaggio_audio"] = f"{n}. {get_smorfia_text(n)}."
                     dati["messaggio_toast"] = ""
-                    # Controlla vincite
-                    d_agg, win_flag = controlla_vincite(dati)
+                    d_agg, win = controlla_vincite(dati)
                     save_stanza_db(stanza, d_agg)
-                    return True, win_flag
+                    return True, win
                 return False, False
 
             with col_auto:
                 usa_auto = st.toggle("Auto-Play 🚀", key="auto_play_toggle")
                 tempo = st.slider("Secondi", 3, 20, 6)
                 p_bar = st.progress(0); stat = st.empty()
-            
             with col_man:
                 if st.button("🎱 ESTRAI MANUALE", type="primary", disabled=usa_auto): 
                     succ, win = estrai()
                     if succ: st.rerun()
 
-            # LOGICA AUTO PLAY
             if usa_auto and not dati.get("gioco_finito"):
                 if len(dati["numeri_tabellone"]) > 0:
                     stat.write(f"⏳ Estrazione in {tempo}s...")
-                    esito, vincita_rilevata = estrai()
-                    
+                    esito, vinta = estrai()
                     if esito:
-                        if vincita_rilevata:
-                            st.session_state.auto_play_toggle = False 
-                            st.rerun() 
+                        if vinta: st.session_state.auto_play_toggle = False; st.rerun()
                         else:
-                            for i in range(100): 
-                                time.sleep(tempo/100)
-                                p_bar.progress(i+1)
+                            for i in range(100): time.sleep(tempo/100); p_bar.progress(i+1)
                             st.rerun()
-                else: 
-                    st.warning("Fine numeri.")
+                else: st.warning("Fine numeri.")
 
-        # AUDIO
         if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
         if msg_audio and msg_audio != st.session_state.last_audio_msg:
             speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
 
-        # VISUALIZZAZIONE ULTIMO NUMERO
         if ultimo:
             st.markdown(f"""
             <div style="text-align: center; background-color: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
@@ -394,17 +423,16 @@ elif menu == "🎮 Entra in Stanza":
             </div>
             """, unsafe_allow_html=True)
             nomi_p = {2:"AMBO", 3:"TERNO", 4:"QUATERNA", 5:"CINQUINA", 15:"TOMBOLA"}
-            st.info(f"Prossimo Obiettivo: **{nomi_p.get(dati.get('obbiettivo_corrente', 2), 'FINE')}**")
+            next_val = vals.get(dati.get('obbiettivo_corrente'), 0)
+            st.info(f"Prossimo Obiettivo: **{nomi_p.get(dati.get('obbiettivo_corrente', 2), 'FINE')}** (Vincita: {next_val} gettoni)")
         else: st.info("In attesa inizio...")
 
-        # TABELLONE
         with st.expander("Tabellone", expanded=True):
             st.markdown("""<style>.g{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}.c{border:1px solid #ccc;text-align:center;padding:5px;font-size:12px;background:#eee}.Ex{background:#e74c3c;color:white;font-weight:bold}</style>""", unsafe_allow_html=True)
             h = '<div class="g">'
             for i in range(1, 91): h+=f'<div class="c {"Ex" if i in estratti else ""}">{i}</div>'
             st.markdown(h+'</div>', unsafe_allow_html=True)
 
-        # CARTELLE (SOLO SE SEI PLAYER)
         if ruolo == "PLAYER":
             st.divider(); st.subheader("Le Tue Cartelle")
             mie = dati["giocatori"].get(mio_nome, [])
