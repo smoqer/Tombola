@@ -17,7 +17,7 @@ LITFIBA_HITS = [
     "Dimmi il nome", "Sotto il vulcano", "Ritmo 2", "Istanbul"
 ]
 
-# --- IMPORT SMORFIA ---
+# --- IMPORT SMORFIA DA FILE ESTERNO ---
 try:
     from smorfia_dati import SMORFIA
 except ImportError:
@@ -29,7 +29,7 @@ QUOTE = {
     2: 0.12, 3: 0.18, 4: 0.20, 5: 0.20, 15: 0.30
 }
 
-# --- CONFIGURAZIONE PAGINA ---
+# --- CONFIGURAZIONE PAGINA E STILE ROCK ---
 st.set_page_config(page_title="TombolaRock", layout="wide", page_icon="🤟")
 
 st.markdown("""
@@ -139,6 +139,7 @@ def get_smorfia_text(num):
 # --- AUDIO JS AVANZATO ---
 def speak_js(text_sequence):
     if not text_sequence: return
+    
     parts = text_sequence.split("||")
     js_logic = "window.speechSynthesis.cancel();"
     
@@ -351,7 +352,7 @@ elif menu == "🎮 Entra in Stanza":
                                 st.rerun()
                     else: st.error("Inserisci nome.")
     else:
-        # --- PARTITA / LOBBY ---
+        # --- GIOCO / LOBBY ---
         stanza = st.session_state.stanza_corrente
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
@@ -372,7 +373,7 @@ elif menu == "🎮 Entra in Stanza":
         stato_partita = dati.get("stato", "LOBBY")
         tot_c, montepremi, vals = get_info_economiche(dati)
         
-        # --- SIDEBAR ---
+        # --- SIDEBAR (SEMPRE VISIBILE) ---
         with st.sidebar:
             st.divider()
             st.markdown(f"""
@@ -422,7 +423,31 @@ elif menu == "🎮 Entra in Stanza":
                 st.session_state.clear()
                 st.rerun()
 
-        # --- LOBBY ---
+        # --- FASE 1: VISUALIZZAZIONE & AUDIO (DEVE ESSERE PRIMA DEL RERUN) ---
+        if stato_partita == "IN_CORSO":
+            ultimo = dati["ultimo_numero"]
+            msg_audio = dati.get("messaggio_audio", "")
+            
+            # AUDIO JS
+            if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
+            if msg_audio and msg_audio != st.session_state.last_audio_msg:
+                speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
+
+            # DISPLAY ULTIMO NUMERO
+            if ultimo:
+                smorfia_testo = get_smorfia_text(ultimo)
+                st.markdown(f"""
+                <div style="text-align: center; background-color: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                    <span style="font-size: 80px; font-weight: bold; color: #e74c3c;">{ultimo}</span><br>
+                    <div class='song-title'>{smorfia_testo}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                nomi_p = {2:"AMBO", 3:"TERNO", 4:"QUATERNA", 5:"CINQUINA", 15:"TOMBOLA"}
+                next_val = vals.get(dati.get('obbiettivo_corrente'), 0)
+                st.info(f"Prossimo Obiettivo: **{nomi_p.get(dati.get('obbiettivo_corrente', 2), 'FINE')}** (Vincita: {next_val} gettoni)")
+
+        # --- FASE 2: LOGICA ADMIN & AUTO-PLAY (DOPO LA VISUALIZZAZIONE) ---
         if stato_partita == "LOBBY":
             if ruolo == "ADMIN":
                 st.info("🕒 Fase di attesa giocatori. Quando sei pronto, dai il via!")
@@ -441,29 +466,11 @@ elif menu == "🎮 Entra in Stanza":
                 """, unsafe_allow_html=True)
                 time.sleep(3)
                 st.rerun()
-            
-            if ruolo == "PLAYER":
-                st.divider()
-                st.subheader("Le Tue Cartelle (Anteprima)")
-                mie = dati["giocatori"].get(mio_nome, [])
-                cols = st.columns(3)
-                st.markdown("""<style>.ct{width:100%;border-collapse:collapse;margin-bottom:10px;background:white}.cc{border:1px solid #333;width:11%;text-align:center;height:30px;font-weight:bold}.ce{background-color:#bdc3c7}</style>""", unsafe_allow_html=True)
-                for idx, m in enumerate(mie):
-                    with cols[idx%3]:
-                        h = f"<b>C. {idx+1}</b><table class='ct'>"
-                        for r in m:
-                            h+="<tr>"
-                            for v in r: h+=f"<td class='cc {'ce' if v==0 else ''}'>{v if v!=0 else ''}</td>"
-                            h+="</tr>"
-                        st.markdown(h+"</table>", unsafe_allow_html=True)
-
-        # --- GIOCO IN CORSO ---
-        else:
+        
+        elif stato_partita == "IN_CORSO":
+            estratti = dati["numeri_estratti"]
             curr_obj = dati.get("obbiettivo_corrente", 2)
             msg_toast = dati.get("messaggio_toast", "")
-            msg_audio = dati.get("messaggio_audio", "")
-            ultimo = dati["ultimo_numero"]
-            estratti = dati["numeri_estratti"]
 
             if msg_toast:
                 if 'last_toast' not in st.session_state or st.session_state.last_toast != msg_toast:
@@ -510,46 +517,22 @@ elif menu == "🎮 Entra in Stanza":
                         succ, win = estrai()
                         if succ: st.rerun()
 
-                # --- LOGICA CORRETTA PER AUTO-PLAY ---
-                # 1. Attende PRIMA di estrarre (così l'utente vede il numero precedente)
+                # LOGICA AUTO-PLAY: Attende PRIMA di estrarre e ricaricare
                 if usa_auto and not dati.get("gioco_finito"):
                     if len(dati["numeri_tabellone"]) > 0:
                         stat.write(f"⏳ Estrazione tra {tempo} secondi...")
-                        
-                        # Barra di attesa
                         my_bar = st.progress(0)
                         for percent_complete in range(100):
                             time.sleep(tempo / 100)
                             my_bar.progress(percent_complete + 1)
                         
-                        # ESTRAZIONE DOPO L'ATTESA
                         esito, vinta = estrai()
-                        
                         if esito:
-                            if vinta: 
-                                st.session_state.stato_autoplay = False
+                            if vinta: st.session_state.stato_autoplay = False
                             st.rerun()
                     else: st.warning("Fine numeri.")
 
-            # GESTIONE AUDIO
-            if 'last_audio_msg' not in st.session_state: st.session_state.last_audio_msg = ""
-            if msg_audio and msg_audio != st.session_state.last_audio_msg:
-                speak_js(msg_audio); st.session_state.last_audio_msg = msg_audio
-
-            # VISUALIZZAZIONE ULTIMO ESTRATTO
-            if ultimo:
-                smorfia_testo = get_smorfia_text(ultimo)
-                st.markdown(f"""
-                <div style="text-align: center; background-color: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                    <span style="font-size: 80px; font-weight: bold; color: #e74c3c;">{ultimo}</span><br>
-                    <div class='song-title'>{smorfia_testo}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                nomi_p = {2:"AMBO", 3:"TERNO", 4:"QUATERNA", 5:"CINQUINA", 15:"TOMBOLA"}
-                next_val = vals.get(dati.get('obbiettivo_corrente'), 0)
-                st.info(f"Prossimo Obiettivo: **{nomi_p.get(dati.get('obbiettivo_corrente', 2), 'FINE')}** (Vincita: {next_val} gettoni)")
-
+            # TABELLONE E CARTELLE
             with st.expander("Tabellone", expanded=True):
                 st.markdown("""<style>.g{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}.c{border:1px solid #ccc;text-align:center;padding:5px;font-size:12px;background:#eee}.Ex{background:#e74c3c;color:white;font-weight:bold}</style>""", unsafe_allow_html=True)
                 h = '<div class="g">'
@@ -569,4 +552,5 @@ elif menu == "🎮 Entra in Stanza":
                             for v in r: h+=f"<td class='cc {'ce' if v==0 else ('ch' if v in estratti else '')}'>{v if v!=0 else ''}</td>"
                             h+="</tr>"
                         st.markdown(h+"</table>", unsafe_allow_html=True)
+                # Player auto-refresh per vedere i nuovi numeri
                 time.sleep(3); st.rerun()
