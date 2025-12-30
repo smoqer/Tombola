@@ -8,7 +8,6 @@ import mysql.connector
 from mysql.connector import Error
 
 # --- LISTA LITFIBA (Per Audio Italiano) ---
-# Questi titoli verranno letti in ITALIANO. Gli altri in INGLESE.
 LITFIBA_HITS = [
     "Eroi nel vento", "El Diablo", "Tex", "Lulù e Marlene", 
     "Gioconda", "Cane", "Fata Morgana", "Maudit", 
@@ -18,11 +17,10 @@ LITFIBA_HITS = [
     "Dimmi il nome", "Sotto il vulcano", "Ritmo 2", "Istanbul"
 ]
 
-# --- IMPORT SMORFIA DA FILE ESTERNO ---
+# --- IMPORT SMORFIA ---
 try:
     from smorfia_dati import SMORFIA
 except ImportError:
-    # Fallback se il file non esiste ancora, per non rompere l'app
     SMORFIA = {} 
 
 # --- COSTANTI ECONOMICHE ---
@@ -31,7 +29,7 @@ QUOTE = {
     2: 0.12, 3: 0.18, 4: 0.20, 5: 0.20, 15: 0.30
 }
 
-# --- CONFIGURAZIONE PAGINA E STILE ROCK ---
+# --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="TombolaRock", layout="wide", page_icon="🤟")
 
 st.markdown("""
@@ -136,21 +134,11 @@ def delete_stanza_db(nome_stanza):
 
 # --- SMORFIA LOOKUP ---
 def get_smorfia_text(num):
-    # Recupera dal dizionario importato, o mette un placeholder se non trovato
     return SMORFIA.get(int(num), "Rock n Roll")
 
-# --- AUDIO JS AVANZATO (MULTI LINGUA) ---
+# --- AUDIO JS AVANZATO ---
 def speak_js(text_sequence):
-    """
-    Gestisce la sequenza audio separata da '||'.
-    Logica:
-    - Numeri -> Italiano
-    - Litfiba -> Italiano
-    - Altre Canzoni -> Inglese
-    - Messaggi sistema -> Italiano
-    """
     if not text_sequence: return
-    
     parts = text_sequence.split("||")
     js_logic = "window.speechSynthesis.cancel();"
     
@@ -158,26 +146,16 @@ def speak_js(text_sequence):
         clean_text = part.replace("'", "\\'").strip()
         if not clean_text: continue
         
-        # DEFAULT: Inglese (Rock internazionale)
         lang = 'en-GB' 
-        
         lower_txt = clean_text.lower()
         
-        # 1. Numeri -> Italiano
         if clean_text.isdigit():
             lang = 'it-IT'
-        
-        # 2. Messaggi di vincita/sistema -> Italiano
         elif any(x in lower_txt for x in ["attenzione", "ambo", "terno", "quaterna", "cinquina", "tombola", "vinto"]):
             lang = 'it-IT'
-            
-        # 3. Canzoni dei LITFIBA -> Italiano
-        # Controlliamo se il titolo estratto contiene una delle hit
-        # Esempio: "Eroi nel vento" in "3 - Eroi nel vento"
         elif any(hit.lower() in lower_txt for hit in LITFIBA_HITS):
             lang = 'it-IT'
             
-        # Costruzione comando JS
         js_logic += f"""
         var u = new SpeechSynthesisUtterance('{clean_text}');
         u.lang = '{lang}';
@@ -306,7 +284,7 @@ elif menu == "🆕 Crea Stanza (Admin)":
                 numeri = list(range(1, 91)); random.shuffle(numeri)
                 dati = {
                     "admin_pwd": pwd, "created_at": str(datetime.now()),
-                    "stato": "LOBBY", # STATO INIZIALE
+                    "stato": "LOBBY", 
                     "numeri_tabellone": numeri, "numeri_estratti": [],
                     "ultimo_numero": None, "messaggio_audio": "", "messaggio_toast": "",
                     "giocatori": {}, "classifica_vincite": {},
@@ -324,17 +302,14 @@ elif menu == "🎮 Entra in Stanza":
         c1, c2 = st.columns(2)
         inp_stanza = c1.text_input("Nome Stanza").upper().strip()
         
-        # Checkbox Admin
         is_admin = st.checkbox("Sono l'Admin (Banco)")
         
         if is_admin:
-            # ADMIN: NOME FISSO, NIENTE CARTELLE
             inp_nome = "TOMBOLONE"
             st.info("Accesso come: **TOMBOLONE**")
             pwd_in = st.text_input("Password", type="password")
             n_cart = 0
         else:
-            # PLAYER: NOME LIBERO, SCELTA CARTELLE
             inp_nome = c2.text_input("Il tuo Nome").strip().upper()
             pwd_in = ""
             n_cart = st.slider(f"Cartelle ({COSTO_CARTELLA} gettoni l'una)", 1, 6, 1)
@@ -376,7 +351,7 @@ elif menu == "🎮 Entra in Stanza":
                                 st.rerun()
                     else: st.error("Inserisci nome.")
     else:
-        # --- PARTITA / LOBBY IN CORSO ---
+        # --- PARTITA / LOBBY ---
         stanza = st.session_state.stanza_corrente
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
@@ -397,7 +372,7 @@ elif menu == "🎮 Entra in Stanza":
         stato_partita = dati.get("stato", "LOBBY")
         tot_c, montepremi, vals = get_info_economiche(dati)
         
-        # --- SIDEBAR COMUNE ---
+        # --- SIDEBAR ---
         with st.sidebar:
             st.divider()
             st.markdown(f"""
@@ -411,7 +386,6 @@ elif menu == "🎮 Entra in Stanza":
             st.markdown("#### 🏆 Premi in Palio")
             nomi_p_short = {2:"AMBO", 3:"TERNO", 4:"QUAT.", 5:"CINQ.", 15:"TOMBOLA"}
             curr_obj = dati.get("obbiettivo_corrente", 2)
-            
             for k, val_p in vals.items():
                 lbl = nomi_p_short.get(k, str(k))
                 marker = "👉" if k == curr_obj and stato_partita == "IN_CORSO" else "-"
@@ -419,12 +393,10 @@ elif menu == "🎮 Entra in Stanza":
                 st.markdown(f"<div class='prize-row'>{marker} <span style='{style_p}'>{lbl}: {val_p}</span></div>", unsafe_allow_html=True)
             
             st.divider()
-            
             num_p = len(dati["giocatori"])
             st.markdown(f"### 👥 {num_p} Presenti")
             leaderboard = dati.get("classifica_vincite", {})
             lista_g = sorted(list(dati["giocatori"].keys()), key=lambda x: leaderboard.get(x, 0), reverse=True)
-            
             st.markdown("<div style='max-height: 400px; overflow-y: auto;'>", unsafe_allow_html=True)
             for g in lista_g:
                 nc = len(dati["giocatori"][g])
@@ -436,7 +408,7 @@ elif menu == "🎮 Entra in Stanza":
             st.markdown("</div>", unsafe_allow_html=True)
             st.divider()
 
-        # --- HEADER PRINCIPALE ---
+        # --- HEADER ---
         c1, c2 = st.columns([3,1])
         c1.markdown(f"## Stanza: **{stanza}** | Utente: *{mio_nome}*")
         
@@ -450,7 +422,7 @@ elif menu == "🎮 Entra in Stanza":
                 st.session_state.clear()
                 st.rerun()
 
-        # --- GESTIONE STATO: LOBBY ---
+        # --- LOBBY ---
         if stato_partita == "LOBBY":
             if ruolo == "ADMIN":
                 st.info("🕒 Fase di attesa giocatori. Quando sei pronto, dai il via!")
@@ -485,7 +457,7 @@ elif menu == "🎮 Entra in Stanza":
                             h+="</tr>"
                         st.markdown(h+"</table>", unsafe_allow_html=True)
 
-        # --- GESTIONE STATO: IN_CORSO ---
+        # --- GIOCO IN CORSO ---
         else:
             curr_obj = dati.get("obbiettivo_corrente", 2)
             msg_toast = dati.get("messaggio_toast", "")
@@ -512,7 +484,6 @@ elif menu == "🎮 Entra in Stanza":
                         dati["numeri_estratti"].append(n)
                         dati["ultimo_numero"] = n
                         smorfia = get_smorfia_text(n)
-                        # AUDIO SEQUENCE: Numero || Canzone
                         dati["messaggio_audio"] = f"{n} || {smorfia}"
                         dati["messaggio_toast"] = ""
                         d_agg, win = controlla_vincite(dati)
@@ -539,17 +510,25 @@ elif menu == "🎮 Entra in Stanza":
                         succ, win = estrai()
                         if succ: st.rerun()
 
+                # --- LOGICA CORRETTA PER AUTO-PLAY ---
+                # 1. Attende PRIMA di estrarre (così l'utente vede il numero precedente)
                 if usa_auto and not dati.get("gioco_finito"):
                     if len(dati["numeri_tabellone"]) > 0:
-                        stat.write(f"⏳ Estrazione in {tempo}s...")
+                        stat.write(f"⏳ Estrazione tra {tempo} secondi...")
+                        
+                        # Barra di attesa
+                        my_bar = st.progress(0)
+                        for percent_complete in range(100):
+                            time.sleep(tempo / 100)
+                            my_bar.progress(percent_complete + 1)
+                        
+                        # ESTRAZIONE DOPO L'ATTESA
                         esito, vinta = estrai()
+                        
                         if esito:
                             if vinta: 
                                 st.session_state.stato_autoplay = False
-                                st.rerun()
-                            else:
-                                for i in range(100): time.sleep(tempo/100); p_bar.progress(i+1)
-                                st.rerun()
+                            st.rerun()
                     else: st.warning("Fine numeri.")
 
             # GESTIONE AUDIO
