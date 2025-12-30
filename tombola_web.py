@@ -180,23 +180,6 @@ def controlla_vincite(dati_stanza):
 st.title("🌍 TOMBOLA ONLINE MULTIPLAYER")
 menu = st.sidebar.radio("Menu", ["🏠 Home", "🆕 Crea Stanza (Admin)", "🎮 Entra in Stanza"])
 
-# --- AGGIUNTA QR CODE IN SIDEBAR ---
-import qrcode
-from io import BytesIO
-from PIL import Image
-with st.sidebar:
-    st.divider()
-    st.markdown("### 📲 Invita Amici")
-    # Nota: Sostituisci questo link con il tuo link reale
-    link_app = "https://share.streamlit.io" 
-    qr = qrcode.QRCode(box_size=10, border=4)
-    qr.add_data(link_app)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    st.image(buffer, caption="Scansiona per entrare!", use_container_width=True)
-
 if menu == "🏠 Home":
     st.markdown("### Benvenuto! I dati sono su MySQL. Connessione multi-utente stabile.")
 
@@ -207,7 +190,6 @@ elif menu == "🆕 Crea Stanza (Admin)":
     with st.form("crea"):
         nome = st.text_input("Nome Stanza", max_chars=15).upper().strip()
         pwd = st.text_input("Password Admin", type="password")
-        # MODIFICA 3: Rimosso checkbox "Banco gioca"
         
         if st.form_submit_button("Crea Stanza"):
             if not nome or not pwd: st.error("Dati mancanti.")
@@ -252,7 +234,7 @@ elif menu == "🎮 Entra in Stanza":
                     else: st.error("Password errata.")
                 else:
                     if inp_nome:
-                        # MODIFICA 1: Controllo Nomi Univoci
+                        # Controllo Nomi Univoci
                         if inp_nome in d["giocatori"]:
                             st.error(f"Il nome '{inp_nome}' è già usato in questa stanza. Scegline un altro.")
                         else:
@@ -342,7 +324,7 @@ elif menu == "🎮 Entra in Stanza":
                     esito, vincita_rilevata = estrai()
                     
                     if esito:
-                        # MODIFICA 2: Se c'è vincita, disattiva Auto-Play
+                        # Se c'è vincita, disattiva Auto-Play
                         if vincita_rilevata:
                             st.session_state.auto_play_toggle = False # Spegne interruttore graficamente
                             st.rerun() # Ricarica pagina per mostrare vincita e stop
