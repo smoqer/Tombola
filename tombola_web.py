@@ -7,6 +7,30 @@ from datetime import datetime
 import mysql.connector
 from mysql.connector import Error
 
+# --- LISTA LITFIBA (Per Audio Italiano) ---
+# Questi titoli verranno letti in ITALIANO. Gli altri in INGLESE.
+LITFIBA_HITS = [
+    "Eroi nel vento", "El Diablo", "Tex", "Lulù e Marlene", 
+    "Gioconda", "Cane", "Fata Morgana", "Maudit", 
+    "Il volo", "Re del silenzio", "Cangaceiro", "Spirito", 
+    "Regina di Cuori", "Lacio Drom", "La Paura", "Proibito", 
+    "Apapaia", "Paname", "Louisiana", "Vivere il mio tempo",
+    "Dimmi il nome", "Sotto il vulcano", "Ritmo 2", "Istanbul"
+]
+
+# --- IMPORT SMORFIA DA FILE ESTERNO ---
+try:
+    from smorfia_dati import SMORFIA
+except ImportError:
+    # Fallback se il file non esiste ancora, per non rompere l'app
+    SMORFIA = {} 
+
+# --- COSTANTI ECONOMICHE ---
+COSTO_CARTELLA = 5
+QUOTE = {
+    2: 0.12, 3: 0.18, 4: 0.20, 5: 0.20, 15: 0.30
+}
+
 # --- CONFIGURAZIONE PAGINA E STILE ROCK ---
 st.set_page_config(page_title="TombolaRock", layout="wide", page_icon="🤟")
 
@@ -41,32 +65,14 @@ st.markdown("""
             text-align: center; padding: 40px; background-color: #2c3e50; color: white;
             border-radius: 15px; margin-top: 20px;
         }
+        
+        /* Titolo Canzone Grande */
+        .song-title {
+            font-size: 30px; font-weight: bold; color: #f1c40f; 
+            margin-top: 10px; font-style: italic; text-shadow: 1px 1px 0 #000;
+        }
     </style>
 """, unsafe_allow_html=True)
-
-# --- LISTA DI CONTROLLO LITFIBA (Per Audio Italiano) ---
-# Serve per identificare quali titoli leggere in Italiano.
-# Deve corrispondere ai titoli presenti nel file smorfia_dati.py
-LITFIBA_HITS = [
-    "Eroi nel vento", "El Diablo", "Tex", "Lulù e Marlene", 
-    "Gioconda", "Cane", "Fata Morgana", "Maudit", 
-    "Il volo", "Re del silenzio", "Cangaceiro", "Spirito", 
-    "Regina di Cuori", "Lacio Drom", "La Paura", "Proibito", 
-    "Apapaia", "Paname", "Louisiana", "Vivere il mio tempo"
-]
-
-# --- IMPORT SMORFIA DA FILE ESTERNO ---
-try:
-    from smorfia_dati import SMORFIA
-except ImportError:
-    st.error("❌ ERRORE: File 'smorfia_dati.py' non trovato nella directory!")
-    SMORFIA = {} # Dizionario vuoto per evitare crash immediato
-
-# --- COSTANTI ECONOMICHE ---
-COSTO_CARTELLA = 5
-QUOTE = {
-    2: 0.12, 3: 0.18, 4: 0.20, 5: 0.20, 15: 0.30
-}
 
 # --- GESTIONE DATABASE MYSQL ---
 def get_connection():
@@ -130,6 +136,7 @@ def delete_stanza_db(nome_stanza):
 
 # --- SMORFIA LOOKUP ---
 def get_smorfia_text(num):
+    # Recupera dal dizionario importato, o mette un placeholder se non trovato
     return SMORFIA.get(int(num), "Rock n Roll")
 
 # --- AUDIO JS AVANZATO (MULTI LINGUA) ---
@@ -165,8 +172,9 @@ def speak_js(text_sequence):
             lang = 'it-IT'
             
         # 3. Canzoni dei LITFIBA -> Italiano
-        # Controlliamo se il titolo estratto è nella lista delle hit italiane
-        elif any(hit.lower() == lower_txt for hit in LITFIBA_HITS):
+        # Controlliamo se il titolo estratto contiene una delle hit
+        # Esempio: "Eroi nel vento" in "3 - Eroi nel vento"
+        elif any(hit.lower() in lower_txt for hit in LITFIBA_HITS):
             lang = 'it-IT'
             
         # Costruzione comando JS
@@ -316,14 +324,17 @@ elif menu == "🎮 Entra in Stanza":
         c1, c2 = st.columns(2)
         inp_stanza = c1.text_input("Nome Stanza").upper().strip()
         
+        # Checkbox Admin
         is_admin = st.checkbox("Sono l'Admin (Banco)")
         
         if is_admin:
+            # ADMIN: NOME FISSO, NIENTE CARTELLE
             inp_nome = "TOMBOLONE"
             st.info("Accesso come: **TOMBOLONE**")
             pwd_in = st.text_input("Password", type="password")
             n_cart = 0
         else:
+            # PLAYER: NOME LIBERO, SCELTA CARTELLE
             inp_nome = c2.text_input("Il tuo Nome").strip().upper()
             pwd_in = ""
             n_cart = st.slider(f"Cartelle ({COSTO_CARTELLA} gettoni l'una)", 1, 6, 1)
@@ -386,7 +397,7 @@ elif menu == "🎮 Entra in Stanza":
         stato_partita = dati.get("stato", "LOBBY")
         tot_c, montepremi, vals = get_info_economiche(dati)
         
-        # --- SIDEBAR ---
+        # --- SIDEBAR COMUNE ---
         with st.sidebar:
             st.divider()
             st.markdown(f"""
@@ -408,6 +419,7 @@ elif menu == "🎮 Entra in Stanza":
                 st.markdown(f"<div class='prize-row'>{marker} <span style='{style_p}'>{lbl}: {val_p}</span></div>", unsafe_allow_html=True)
             
             st.divider()
+            
             num_p = len(dati["giocatori"])
             st.markdown(f"### 👥 {num_p} Presenti")
             leaderboard = dati.get("classifica_vincite", {})
@@ -424,7 +436,7 @@ elif menu == "🎮 Entra in Stanza":
             st.markdown("</div>", unsafe_allow_html=True)
             st.divider()
 
-        # --- HEADER ---
+        # --- HEADER PRINCIPALE ---
         c1, c2 = st.columns([3,1])
         c1.markdown(f"## Stanza: **{stanza}** | Utente: *{mio_nome}*")
         
@@ -438,7 +450,7 @@ elif menu == "🎮 Entra in Stanza":
                 st.session_state.clear()
                 st.rerun()
 
-        # --- LOBBY ---
+        # --- GESTIONE STATO: LOBBY ---
         if stato_partita == "LOBBY":
             if ruolo == "ADMIN":
                 st.info("🕒 Fase di attesa giocatori. Quando sei pronto, dai il via!")
@@ -473,7 +485,7 @@ elif menu == "🎮 Entra in Stanza":
                             h+="</tr>"
                         st.markdown(h+"</table>", unsafe_allow_html=True)
 
-        # --- GIOCO IN CORSO ---
+        # --- GESTIONE STATO: IN_CORSO ---
         else:
             curr_obj = dati.get("obbiettivo_corrente", 2)
             msg_toast = dati.get("messaggio_toast", "")
@@ -551,7 +563,7 @@ elif menu == "🎮 Entra in Stanza":
                 st.markdown(f"""
                 <div style="text-align: center; background-color: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                     <span style="font-size: 80px; font-weight: bold; color: #e74c3c;">{ultimo}</span><br>
-                    <span style="font-size: 24px; font-style: italic;">{smorfia_testo}</span>
+                    <div class='song-title'>{smorfia_testo}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
