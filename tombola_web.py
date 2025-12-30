@@ -251,6 +251,10 @@ elif menu == "🆕 Crea Stanza (Admin)":
                     "obbiettivo_corrente": 2, "gioco_finito": False
                 }
                 save_stanza_db(nome, dati)
+                
+                # Salviamo il messaggio di successo nel session state per mostrarlo dopo il rerun
+                st.session_state.admin_msg = f"Stanza '{nome}' creata! 🎸"
+                
                 st.session_state.ruolo = "ADMIN"
                 st.session_state.stanza_corrente = nome
                 st.session_state.nome_giocatore = "ADMIN"
@@ -262,11 +266,17 @@ elif menu == "🎮 Entra in Stanza":
         inp_stanza = c1.text_input("Nome Stanza").upper().strip()
         inp_nome = c2.text_input("Il tuo Nome").strip().upper()
         
+        # Checkbox Admin
         is_admin = st.checkbox("Sono l'Admin (Banco)")
         pwd_in = st.text_input("Password", type="password") if is_admin else ""
-        n_cart = st.slider(f"Cartelle ({COSTO_CARTELLA} gettoni l'una)", 1, 6, 1)
-        costo_tot = n_cart * COSTO_CARTELLA
-        st.info(f"💰 Costo ingresso: **{costo_tot} gettoni**")
+        
+        # LOGICA: Mostra slider solo se NON sei Admin
+        if not is_admin:
+            n_cart = st.slider(f"Cartelle ({COSTO_CARTELLA} gettoni l'una)", 1, 6, 1)
+            costo_tot = n_cart * COSTO_CARTELLA
+            st.info(f"💰 Costo ingresso: **{costo_tot} gettoni**")
+        else:
+            n_cart = 0 # L'admin non ha cartelle
         
         if st.button("ENTRA 🤟"):
             d = load_stanza_db(inp_stanza)
@@ -280,9 +290,11 @@ elif menu == "🎮 Entra in Stanza":
                         st.rerun()
                     else: st.error("Password errata.")
                 else:
+                    # GESTIONE LOBBY PLAYER
                     if inp_nome:
                         gia_presente = inp_nome in d["giocatori"]
                         stato_partita = d.get("stato", "LOBBY")
+                        
                         if not gia_presente and stato_partita != "LOBBY":
                             st.error("🚫 Concerto già iniziato! La biglietteria è chiusa.")
                         elif gia_presente:
@@ -303,10 +315,16 @@ elif menu == "🎮 Entra in Stanza":
                                 st.rerun()
                     else: st.error("Inserisci nome.")
     else:
-        # --- PARTITA / LOBBY ---
+        # --- PARTITA / LOBBY IN CORSO ---
         stanza = st.session_state.stanza_corrente
         ruolo = st.session_state.ruolo
         mio_nome = st.session_state.nome_giocatore
+        
+        # CHECK MESSAGGIO DI BENVENUTO ADMIN
+        if "admin_msg" in st.session_state:
+            st.toast(st.session_state.admin_msg, icon="✅")
+            del st.session_state.admin_msg
+        
         dati = load_stanza_db(stanza)
         
         if not dati:
@@ -319,7 +337,7 @@ elif menu == "🎮 Entra in Stanza":
         stato_partita = dati.get("stato", "LOBBY")
         tot_c, montepremi, vals = get_info_economiche(dati)
         
-        # --- SIDEBAR COMUNE (SEMPRE VISIBILE) ---
+        # --- SIDEBAR COMUNE ---
         with st.sidebar:
             st.divider()
             st.markdown(f"""
@@ -345,7 +363,7 @@ elif menu == "🎮 Entra in Stanza":
             
             # CLASSIFICA GIOCATORI
             num_p = len(dati["giocatori"])
-            st.markdown(f"### 👥 {num_p} Partecipanti")
+            st.markdown(f"### 👥 {num_p} Presenti")
             leaderboard = dati.get("classifica_vincite", {})
             lista_g = sorted(list(dati["giocatori"].keys()), key=lambda x: leaderboard.get(x, 0), reverse=True)
             
@@ -397,6 +415,7 @@ elif menu == "🎮 Entra in Stanza":
                 time.sleep(3)
                 st.rerun()
             
+            # Mostra comunque le cartelle in lobby per i player
             if ruolo == "PLAYER":
                 st.divider()
                 st.subheader("Le Tue Cartelle (Anteprima)")
